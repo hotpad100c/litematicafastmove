@@ -114,12 +114,20 @@ Inherited from the 1.20.4 / 1.20.1 / 1.19.3 ports:
 
 `./gradlew build` is green. Mixin application and in-game behaviour still need a `runClient` smoke test.
 
-## Cross-version note (not introduced by this branch)
+## Note on mixin target remapping (a useful check, not a defect)
 
-The mod's MC-targeting mixins all use `remap = false` and the project declares no mixin refmap (upstream
-targets Minecraft 26.3, where class and member names are not obfuscated). On obfuscated versions the *target
-class* is still remapped by Loom (it is a class constant), while method/field *names* in the annotation strings
-are not, so mixins into Minecraft classes will not resolve in production builds. This affects the 1.19.3 and
-newer branches in the same way; fixing it means adding a refmap to `litematicafastmove.mixins.json` and is left
-outside this port. Within this branch, target names were chosen so that they resolve in the development runtime
-and `remapJar` reports no unresolved target.
+The mod declares no mixin refmap in `litematicafastmove.mixins.json`, but that does not matter: Loom's
+`remapJar` rewrites the target names inside the mixin annotations directly. `BufferBuilderAccessor` in the built
+jar carries `@Accessor("field_20774")` / `field_20776` / `field_1555` and `MixinClientLevel` carries
+`@Inject(method = "method_16109")`, i.e. the names the mod wrote are mapped to intermediary exactly as they
+should be, for `remap = true` and `remap = false` mixins alike (verified with `javap -v` on
+`build/libs/litematicafastmove-1.0.0+1.18.2.jar` and on the 1.16.5 branch's jar).
+
+That same step is also a validator: when a name cannot be resolved in the target class it prints
+`Cannot remap <name> because it does not exist in any of the targets [<class>] or their parents` and leaves the
+name unmapped. On this branch it caught `ClientLevel#setServerVerifiedBlockState` (1.18.2 only has
+`setKnownState`) and on the 1.17.1 branch `SchematicPlacementManager#chunkRebuildQueue` (0.9.0 has a single
+`chunksToRebuild` set); both were fixed. All three 1.16-1.18 branches now build with zero such warnings, which
+means every `@Shadow`/`@Inject`/`@WrapMethod`/`@Accessor` target resolved in the target class with a matching
+descriptor. `@At` injection points are not covered by it and were verified separately against the decompiled
+Litematica/malilib sources.
