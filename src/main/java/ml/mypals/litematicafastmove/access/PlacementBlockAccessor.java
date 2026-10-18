@@ -1,10 +1,11 @@
 package ml.mypals.litematicafastmove.access;
 
 import fi.dy.masa.litematica.schematic.LitematicaSchematic;
-import fi.dy.masa.litematica.util.PositionUtils;
 import fi.dy.masa.litematica.schematic.container.LitematicaBlockStateContainer;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.schematic.placement.SubRegionPlacement;
+import fi.dy.masa.litematica.selection.Box;
+import fi.dy.masa.litematica.util.PositionUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.block.Blocks;
@@ -12,6 +13,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class PlacementBlockAccessor {
     public final SchematicPlacement placement;
@@ -28,25 +30,27 @@ public class PlacementBlockAccessor {
         this.schematic = placement.getSchematic();
         this.origin = placement.getOrigin();
 
-        var boxes = placement.getSubRegionBoxes(SubRegionPlacement.RequiredEnabled.PLACEMENT_ENABLED);
+        Map<String, Box> boxes = placement.getSubRegionBoxes(SubRegionPlacement.RequiredEnabled.PLACEMENT_ENABLED);
         BlockPos p1 = null;
         BlockPos p2 = null;
-        for (var b : boxes.values()) {
-            assert b.getPos1() != null;
-            assert b.getPos2() != null;
-            BlockPos boxMin = PositionUtils.getMinCorner(b.getPos1(), b.getPos2());
-            BlockPos boxMax = PositionUtils.getMaxCorner(b.getPos1(), b.getPos2());
+        for (Box b : boxes.values()) {
+            BlockPos pos1 = b.getPos1();
+            BlockPos pos2 = b.getPos2();
+            if (pos1 == null || pos2 == null) continue;
+            BlockPos boxMin = PositionUtils.getMinCorner(pos1, pos2);
+            BlockPos boxMax = PositionUtils.getMaxCorner(pos1, pos2);
             p1 = p1 == null ? boxMin : PositionUtils.getMinCorner(p1, boxMin);
             p2 = p2 == null ? boxMax : PositionUtils.getMaxCorner(p2, boxMax);
         }
         this.minPos = p1 != null ? p1 : origin;
         this.maxPos = p2 != null ? p2 : origin;
 
-        var areaSizes = schematic.getAreaSizes();
+        @SuppressWarnings("unchecked")
+        Map<String, BlockPos> areaSizes = schematic.getAreaSizes();
         for (SubRegionPlacement subPlacement : placement.getAllSubRegionsPlacements()) {
             if (!subPlacement.isEnabled()) continue;
             String name = subPlacement.getName();
-            Vec3i size = schematic.getAreaSizeAsVec3i(name);
+            Vec3i size = areaSizes.get(name);
             LitematicaBlockStateContainer container = schematic.getSubRegionContainer(name);
             if (size == null || container == null) continue;
 
@@ -98,4 +102,3 @@ public class PlacementBlockAccessor {
         return Blocks.AIR.defaultBlockState();
     }
 }
-

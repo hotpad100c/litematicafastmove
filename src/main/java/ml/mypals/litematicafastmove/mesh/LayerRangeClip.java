@@ -2,17 +2,21 @@ package ml.mypals.litematicafastmove.mesh;
 
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.malilib.util.LayerMode;
-import fi.dy.masa.malilib.util.position.LayerRange;
+import fi.dy.masa.malilib.util.LayerRange;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 
-
+/**
+ * Snapshot of Litematica's render layer range, used to clip the detached meshes the same way Litematica's own
+ * chunk renderer clips its boxes.
+ */
 public class LayerRangeClip {
     record Range(Direction.Axis axis, int min, int max) {}
+
     static Range snapshot() {
         LayerRange range = DataManager.getRenderLayerRange();
         if (range == null || range.getLayerMode() == LayerMode.ALL) return null;
-        return new Range(range.getAxis(), range.getMinLayerBoundary(), range.getMaxLayerBoundary());
+        return new Range(range.getAxis(), range.getLayerMin(), range.getLayerMax());
     }
 
     static PlacementMesh.Clip compute(Range range, BlockPos min, BlockPos max, BlockPos sectionOrigin, BlockPos delta) {

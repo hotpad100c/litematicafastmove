@@ -1,8 +1,6 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.device.GpuDevice;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -81,7 +79,6 @@ final class MeshUploader {
         }
 
         PlacementBlockEntities.scheduleLitematicaChunks(blockEntityChunks);
-        TranslucentSorter.applyResorted();
     }
 
     private static void accept(PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer buffer) {
@@ -145,8 +142,6 @@ final class MeshUploader {
     }
 
     private static void upload(PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer buffer, Budget budget) {
-        GpuDevice device = RenderSystem.getDevice();
-
         while (budget.hasRemaining() && !buffer.isFullyUploaded()) {
             budget.usedAny = true;
             PlacementMesh.CpuSection section = buffer.pending.get(buffer.nextToUpload++);
@@ -155,28 +150,23 @@ final class MeshUploader {
             for (PlacementMesh.CpuLayer layer : section.layers()) {
                 PlacementMesh.GpuLayer same = findSameContent(old, layer);
                 if (same != null) {
-                    // 内容未变 (例如移动后重新对照，结果相同)：沿用旧 buffer，不重新创建
+                    // Same content (e.g. re-checked after a move): keep the old buffer, do not re-create it
                     buffer.borrowed.add(same);
                     layers.add(same);
                     layer.free();
                     continue;
                 }
 
-                budget.bytes -= layer.vertices().remaining();
-                GpuBuffer vertexBuffer = device.createBuffer(() -> "litematicafastmove:placement_mesh",
-                        GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_COPY_DST, layer.vertices());
-                GpuBuffer indexBuffer = null;
+                budget.bytes -= layer.vertexBytes();
+                VertexBuffer vertexBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                vertexBuffer.upload(layer.buffer());
                 PlacementMesh.SortInfo sort = null;
-                if (layer.indices() != null) {
-                    budget.bytes -= layer.indices().remaining();
-                    indexBuffer = device.createBuffer(() -> "litematicafastmove:placement_mesh_indices",
-                            GpuBuffer.USAGE_INDEX | GpuBuffer.USAGE_COPY_DST, layer.indices());
-                    sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN);
+                if (layer.sortState() != null) {
+                    sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,
+                            layer.layer().mode(), layer.layer().format());
                 }
-                int vertexBytes = layer.vertices().remaining();
-                layer.free();
                 layers.add(new PlacementMesh.GpuLayer(layer.layer(), layer.overlay(), vertexBuffer, layer.indexCount(),
-                        indexBuffer, layer.indexType(), sort, vertexBytes, layer.hash()));
+                        sort, layer.vertexBytes(), layer.hash()));
             }
             buffer.uploaded.add(new PlacementMesh.GpuSection(section.key(), section.origin(),
                     section.hasBlocks(), section.clientEmpty(), section.clip(), layers, section.blockEntities()));
@@ -186,7 +176,7 @@ final class MeshUploader {
     private static PlacementMesh.GpuLayer findSameContent(PlacementMesh.GpuSection old, PlacementMesh.CpuLayer layer) {
         if (old == null) return null;
         for (PlacementMesh.GpuLayer candidate : old.layers()) {
-            if (!candidate.vertexBuffer().isClosed() && candidate.sameContent(layer)) return candidate;
+            if (candidate.sameContent(layer)) return candidate;
         }
         return null;
     }

@@ -2,8 +2,10 @@ package ml.mypals.litematicafastmove.access;
 
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
+import fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,7 +23,7 @@ public class PlacementAccessorRegistry {
     }
 
     public static BlockState getBlockStateAt(int worldX, int worldY, int worldZ) {
-        var manager = DataManager.getSchematicPlacementManager();
+        SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
         if (manager == null) return null;
 
         SchematicPlacement selected = manager.getSelectedSchematicPlacement();
@@ -35,7 +37,8 @@ public class PlacementAccessorRegistry {
             }
         }
 
-        var all = manager.getAllSchematicsPlacements();
+        @SuppressWarnings("unchecked")
+        List<SchematicPlacement> all = manager.getAllSchematicsPlacements();
         if (all != null) {
             for (SchematicPlacement placement : all) {
                 if (placement != selected && placement != null && placement.isEnabled()) {
