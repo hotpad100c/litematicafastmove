@@ -1,10 +1,10 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 	id 'maven-publish'
 }
 
 repositories {
-	// EXIT (emergency_exit) is not published anywhere yet: `./gradlew :26.3:publishToMavenLocal` in its repository.
+	// EXIT (emergency_exit) is not published anywhere yet: `./gradlew publishToMavenLocal` in its repository.
 	exclusiveContent {
 		forRepository {
 			mavenLocal()
@@ -30,18 +30,20 @@ repositories {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 
-	implementation "maven.modrinth:bEpr0Arc:ZqV316KY" // Litematica 0.29.1
-	implementation "maven.modrinth:malilib:0.30.2"
+	// 1.20.6 is obfuscated, so the Litematica/malilib jars are remapped to the official (Mojang) names.
+	modImplementation "maven.modrinth:bEpr0Arc:h226Yxd4" // Litematica 0.18.3
+	modImplementation "maven.modrinth:malilib:WOM5o7Zn" // malilib 0.19.2
 
 	// EXIT routes the schematic rendering past shader packs. Nested, so players do not install it separately.
 	// The Fabric jar carries the whole library (its own classes and the common ones), so the one artifact is enough.
-	implementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
+	modImplementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
 	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
 
 	// Iris and Sodium for the development runs only, the same versions EXIT is built against.
@@ -63,7 +65,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
+	it.options.release = 21
 }
 
 java {
@@ -72,8 +74,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }
 
 jar {
