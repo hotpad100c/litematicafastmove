@@ -10,9 +10,8 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 public class ClientRegions {
 
     static boolean isEmpty(ClientLevel level, int x0, int y0, int z0, int x1, int y1, int z1) {
-        // 1.17 has no ChunkAccess#getSection(int)/getSectionsCount(); the section array is indexed from the bottom
-        // of the world instead.
-        int minSectionY = level.getMinBuildHeight() >> 4;
+        // 1.16.5 has no ChunkAccess#getSection(int)/getSectionsCount() and no negative world bottom: the section
+        // array starts at y = 0, so the section Y is the array index.
         for (int cx = x0 >> 4; cx <= x1 >> 4; cx++) {
             for (int cz = z0 >> 4; cz <= z1 >> 4; cz++) {
                 ChunkAccess chunk = level.getChunkSource().getChunk(cx, cz, false);
@@ -20,8 +19,7 @@ public class ClientRegions {
 
                 LevelChunkSection[] sections = chunk.getSections();
                 for (int sy = y0 >> 4; sy <= y1 >> 4; sy++) {
-                    int index = sy - minSectionY;
-                    if (index >= 0 && index < sections.length && !sections[index].isEmpty()) {
+                    if (sy >= 0 && sy < sections.length && !sections[sy].isEmpty()) {
                         return false;
                     }
                 }

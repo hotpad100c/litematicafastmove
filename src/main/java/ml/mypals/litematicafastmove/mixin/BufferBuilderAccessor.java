@@ -8,16 +8,16 @@ import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
- * Minecraft 1.18.2 has no public handle on a finished BufferBuilder: the RenderedBuffer that 1.19.3 hands out does not
- * exist yet, the data stays inside the builder until VertexBuffer#upload pops it. The mesh builder needs the draw
- * state and the raw vertex bytes (for the upload budget and the content hash) while it is still on the builder thread,
- * so it reads them through these accessors.
+ * Minecraft 1.16.5 has no public handle on a finished BufferBuilder: there is no RenderedBuffer / MeshData and the
+ * draw state is not exposed, the data stays inside the builder until VertexBuffer#upload pops it. The mesh builder
+ * needs the vertex count and the raw vertex bytes (for the upload budget and the content hash) while it is still on
+ * the builder thread, so it reads them through these accessors.
  */
 @Mixin(BufferBuilder.class)
 public interface BufferBuilderAccessor {
 
-    @Accessor("drawStates")
-    List<BufferBuilder.DrawState> lfm$drawStates();
+    @Accessor("vertexCounts")
+    List<BufferBuilder.DrawState> lfm$vertexCounts();
 
     @Accessor("totalRenderedBytes")
     int lfm$totalRenderedBytes();

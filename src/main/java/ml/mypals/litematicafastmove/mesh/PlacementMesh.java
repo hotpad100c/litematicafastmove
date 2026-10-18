@@ -36,9 +36,9 @@ final class PlacementMesh {
      * vertex data, used to keep the old GPU buffer when a rebuild produced the same geometry.
      */
     record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder buffer,
-                    int indexCount, BufferBuilder.SortState sortState, int vertexBytes, long hash) {
+                    int vertexCount, BufferBuilder.State sortState, int vertexBytes, long hash) {
         void free() {
-            // 1.18.2 has no pooled buffer to hand back: the direct ByteBuffer dies with the builder
+            // there is no pooled buffer to hand back: the direct ByteBuffer dies with the builder
         }
     }
     // clientEmpty: the matching area of the real world (grown by one block) is all air
@@ -47,13 +47,13 @@ final class PlacementMesh {
                       List<CpuLayer> layers, long[] blockEntities) {}
 
     static final class SortInfo {
-        final BufferBuilder.SortState state;
-        final VertexFormat.Mode mode;
+        final BufferBuilder.State state;
+        final int mode;
         final VertexFormat format;
         double lastX, lastY, lastZ;
         boolean pending;
 
-        SortInfo(BufferBuilder.SortState state, double x, double y, double z, VertexFormat.Mode mode, VertexFormat format) {
+        SortInfo(BufferBuilder.State state, double x, double y, double z, int mode, VertexFormat format) {
             this.state = state;
             this.lastX = x;
             this.lastY = y;
@@ -63,10 +63,11 @@ final class PlacementMesh {
         }
     }
 
-    record GpuLayer(RenderType layer, OverlayRenderType overlay, VertexBuffer vertexBuffer, int indexCount,
+    // vertexCount: 1.16.5 draws with glDrawArrays, so what is drawn is a vertex count, not an index count
+    record GpuLayer(RenderType layer, OverlayRenderType overlay, VertexBuffer vertexBuffer, int vertexCount,
                     SortInfo sort, int vertexBytes, long hash) {
         boolean sameContent(CpuLayer cpu) {
-            return this.layer == cpu.layer() && this.overlay == cpu.overlay() && this.indexCount == cpu.indexCount() &&
+            return this.layer == cpu.layer() && this.overlay == cpu.overlay() && this.vertexCount == cpu.vertexCount() &&
                    this.vertexBytes == cpu.vertexBytes() && this.hash == cpu.hash();
         }
 

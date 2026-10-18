@@ -22,6 +22,7 @@ import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
@@ -226,8 +227,8 @@ public final class MeshSectionBuilder {
                 if (scan) {
                     OverlayMeshBuilder overlay = overlayEnabled
                             ? new OverlayMeshBuilder(view,
-                                    p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
-                                    type -> overlayBuilders.computeIfAbsent(type, t -> newBuffer(t.getDrawMode(), com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR, 256 * 1024)))
+                                    p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta.getX(), clientDelta.getY(), clientDelta.getZ())),
+                                    type -> overlayBuilders.computeIfAbsent(type, t -> newBuffer(t.getGlMode(), com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR, 256 * 1024)))
                             : null;
 
                     for (int y = y0; y <= y1; y++) {
@@ -240,7 +241,7 @@ public final class MeshSectionBuilder {
 
                                 pos.set(x, y, z);
                                 BlockState state = view.getBlockState(pos);
-                                clientPos.setWithOffset(pos, clientDelta);
+                                clientPos.setWithOffset(pos, clientDelta.getX(), clientDelta.getY(), clientDelta.getZ());
                                 BlockState clientState = clientLevel.getBlockState(clientPos);
                                 boolean schematicAir = state.isAir();
                                 boolean clientAir = clientState.isAir();
@@ -252,7 +253,7 @@ public final class MeshSectionBuilder {
                                     tessellate(view, state, pos, blockRenderer,
                                             layer -> builders.computeIfAbsent(translucent ? RenderType.translucent() : layer,
                                                     l -> newBuffer(l.mode(), l.format(), l.bufferSize())));
-                                    if (state.hasBlockEntity()) {
+                                    if (state.getBlock() instanceof EntityBlock) {
                                         blockEntities.add(BlockPos.asLong(x, y, z));
                                     }
                                     missing = clientAir && state.getRenderShape() == RenderShape.MODEL;
@@ -278,32 +279,32 @@ public final class MeshSectionBuilder {
                 for (Map.Entry<RenderType, BufferBuilder> entry : builders.entrySet()) {
                     BufferBuilder builder = entry.getValue();
                     boolean isTranslucent = entry.getKey() == RenderType.translucent();
-                    BufferBuilder.SortState sortState = null;
+                    BufferBuilder.State sortState = null;
                     if (isTranslucent) {
-                        // 1.20 replaced the sort origin with a VertexSorting; here the BufferBuilder still sorts the
-                        // quads around setQuadSortOrigin, which is exactly what the vanilla chunk resort does.
-                        builder.setQuadSortOrigin(cameraX, cameraY, cameraZ);
-                        sortState = builder.getSortState();
+                        // 1.16.5 reorders the quad vertices in place; the state captured right after the sort is what
+                        // the re-sort later restores, exactly like the vanilla chunk resort does it.
+                        builder.sortQuads(cameraX, cameraY, cameraZ);
+                        sortState = builder.getState();
                     }
                     builder.end();
-                    int indexCount = indexCount(builder);
-                    if (indexCount == 0) {
+                    int vertexCount = vertexCount(builder);
+                    if (vertexCount == 0) {
                         continue;
                     }
-                    int vertexBytes = bufferBytes(builder);
+                    int vertexBytes = vertexBytes(builder);
                     layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, builder,
-                            indexCount, sortState, vertexBytes, contentHash(builder)));
+                            vertexCount, sortState, vertexBytes, contentHash(builder)));
                 }
                 for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
                     BufferBuilder builder = entry.getValue();
                     builder.end();
-                    int indexCount = indexCount(builder);
-                    if (indexCount == 0) {
+                    int vertexCount = vertexCount(builder);
+                    if (vertexCount == 0) {
                         continue;
                     }
-                    int vertexBytes = bufferBytes(builder);
+                    int vertexBytes = vertexBytes(builder);
                     layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), builder,
-                            indexCount, null, vertexBytes, contentHash(builder)));
+                            vertexCount, null, vertexBytes, contentHash(builder)));
                 }
 
                 // Section is only kept when there is something in it, or when a partial build must clear it
@@ -320,16 +321,18 @@ public final class MeshSectionBuilder {
         return sections;
     }
 
-    /** Number of indices the just-ended builder wrote (0 means it holds no geometry at all). */
-    private static int indexCount(BufferBuilder builder) {
-        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
-        return states.isEmpty() ? 0 : states.get(states.size() - 1).indexCount();
+    /** Number of vertices the just-ended builder wrote (0 means it holds no geometry at all). */
+    private static int vertexCount(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$vertexCounts();
+        return states.isEmpty() ? 0 : states.get(states.size() - 1).vertexCount();
     }
 
-    /** Bytes the upload of the just-ended builder will move (vertices plus indices). */
-    private static int bufferBytes(BufferBuilder builder) {
-        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
-        return states.isEmpty() ? 0 : states.get(states.size() - 1).bufferSize();
+    /** Bytes the upload of the just-ended builder will move. 1.16.5 uploads vertices only, there is no index buffer. */
+    private static int vertexBytes(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$vertexCounts();
+        if (states.isEmpty()) return 0;
+        BufferBuilder.DrawState state = states.get(states.size() - 1);
+        return state.vertexCount() * state.format().getVertexSize();
     }
 
     /**
@@ -347,7 +350,7 @@ public final class MeshSectionBuilder {
         return hash(bytes);
     }
 
-    private static BufferBuilder newBuffer(VertexFormat.Mode mode, VertexFormat format, int capacity) {
+    private static BufferBuilder newBuffer(int mode, VertexFormat format, int capacity) {
         BufferBuilder builder = new BufferBuilder(capacity);
         builder.begin(mode, format);
         return builder;

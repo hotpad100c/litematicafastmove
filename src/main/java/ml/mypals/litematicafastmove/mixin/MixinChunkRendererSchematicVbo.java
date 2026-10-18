@@ -15,6 +15,7 @@ import ml.mypals.litematicafastmove.mesh.PlacementMeshManager;
 import ml.mypals.litematicafastmove.render.SchematicExit;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -34,9 +35,9 @@ public abstract class MixinChunkRendererSchematicVbo {
 
     @Inject(method = "rebuildWorldView", at = @At("RETURN"))
     private void excludeTakenOverPlacements(CallbackInfo ci) {
-        // 0.11.7 fills the boxes from the sub-chunk (16^3) the renderer covers and exposes its placement parts per
-        // sub-chunk; 0.13.2 replaced that with a whole-chunk lookup. Same intent: drop the boxes of the placements
-        // whose mesh this mod draws detached.
+        // The 1.16.5 renderer fills the boxes from the sub-chunk (16^3) it covers and exposes its placement parts per
+        // sub-chunk; later releases replaced that with a whole-chunk lookup. Same intent: drop the boxes of the
+        // placements whose mesh this mod draws detached.
         SubChunkPos subChunk = new SubChunkPos(this.position.getX() >> 4, this.position.getY() >> 4, this.position.getZ() >> 4);
 
         synchronized (this.boxes) {
@@ -62,10 +63,10 @@ public abstract class MixinChunkRendererSchematicVbo {
         PlacementBlockEntities.forEachInChunk(this.position.getX() >> 4, this.position.getZ() >> 4, packed -> {
             pos.set(packed);
             BlockState state = this.schematicWorldView.getBlockState(pos);
-            if (state.hasBlockEntity()) {
+            if (state.getBlock() instanceof EntityBlock) {
                 BlockEntity blockEntity = this.schematicWorldView.getBlockEntity(pos);
-                if (blockEntity != null && net.minecraft.client.Minecraft.getInstance()
-                        .getBlockEntityRenderDispatcher().getRenderer(blockEntity) != null) {
+                if (blockEntity != null && net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher.instance
+                        .getRenderer(blockEntity) != null) {
                     data.addBlockEntity(blockEntity);
                 }
             }

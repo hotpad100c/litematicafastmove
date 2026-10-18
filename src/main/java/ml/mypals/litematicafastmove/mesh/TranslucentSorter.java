@@ -7,9 +7,10 @@ import ml.mypals.litematicafastmove.config.FastMoveConfig;
 /**
  * Re-sorts the translucent sections of the detached meshes.
  * <p>
- * 0.29's version sorts a copy of the index buffer on a worker thread. Minecraft 1.20.4's BufferBuilder owns the
- * sorting points, so like Litematica's own chunk renderer this re-sorts a bounded number of sections synchronously on
- * the render thread, and only when the camera moved far enough.
+ * Minecraft 1.16.5 reorders the quad vertices themselves (it has no index buffer): begin, restoreState, sortQuads and
+ * upload is exactly what the vanilla chunk resort (ChunkRenderDispatcher.ResortTransparencyTask) does. Like
+ * Litematica's own chunk renderer this re-sorts a bounded number of sections on the render thread, and only when the
+ * camera moved far enough.
  */
 public class TranslucentSorter {
 
@@ -34,8 +35,8 @@ public class TranslucentSorter {
         try {
             BufferBuilder builder = new BufferBuilder(4096);
             builder.begin(sort.mode, sort.format);
-            builder.restoreSortState(sort.state);
-            builder.setQuadSortOrigin((float) rx, (float) ry, (float) rz);
+            builder.restoreState(sort.state);
+            builder.sortQuads((float) rx, (float) ry, (float) rz);
             builder.end();
             layer.vertexBuffer().upload(builder);
             sort.lastX = rx;

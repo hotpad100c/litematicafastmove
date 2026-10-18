@@ -1,6 +1,8 @@
 package ml.mypals.litematicafastmove.mesh;
 
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -158,19 +160,24 @@ final class MeshUploader {
                 }
 
                 budget.bytes -= layer.vertexBytes();
-                VertexBuffer vertexBuffer = new VertexBuffer();
+                VertexBuffer vertexBuffer = new VertexBuffer(vertexFormatOf(layer));
                 vertexBuffer.upload(layer.buffer());
                 PlacementMesh.SortInfo sort = null;
                 if (layer.sortState() != null) {
                     sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,
                             layer.layer().mode(), layer.layer().format());
                 }
-                layers.add(new PlacementMesh.GpuLayer(layer.layer(), layer.overlay(), vertexBuffer, layer.indexCount(),
+                layers.add(new PlacementMesh.GpuLayer(layer.layer(), layer.overlay(), vertexBuffer, layer.vertexCount(),
                         sort, layer.vertexBytes(), layer.hash()));
             }
             buffer.uploaded.add(new PlacementMesh.GpuSection(section.key(), section.origin(),
                     section.hasBlocks(), section.clientEmpty(), section.clip(), layers, section.blockEntities()));
         }
+    }
+
+    /** 1.16.5's VertexBuffer must know the VertexFormat up front; it builds no index buffer at all. */
+    private static VertexFormat vertexFormatOf(PlacementMesh.CpuLayer layer) {
+        return layer.layer() != null ? layer.layer().format() : DefaultVertexFormat.POSITION_COLOR;
     }
 
     private static PlacementMesh.GpuLayer findSameContent(PlacementMesh.GpuSection old, PlacementMesh.CpuLayer layer) {

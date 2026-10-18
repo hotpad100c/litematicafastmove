@@ -114,13 +114,10 @@ final class DetachedBlockView implements BlockAndTintGetter {
         return this.clientLevel.getShade(direction, shade);
     }
 
+    // 1.16.5's BlockGetter has neither getHeight nor getMinBuildHeight; its getMaxBuildHeight tells the model
+    // renderer how far up the light sampling may go.
     @Override
-    public int getHeight() {
-        return this.lightWorld.getHeight();
-    }
-
-    @Override
-    public int getMinBuildHeight() {
-        return this.lightWorld.getMinBuildHeight();
+    public int getMaxBuildHeight() {
+        return this.lightWorld.getMaxBuildHeight();
     }
 }
