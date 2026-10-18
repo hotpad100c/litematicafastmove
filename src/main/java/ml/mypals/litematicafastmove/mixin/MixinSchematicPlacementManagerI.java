@@ -29,7 +29,6 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
 
     @Shadow @Final protected Set<ChunkPos> chunksPreChange;
     @Shadow @Final protected Set<ChunkPos> chunksToRebuild;
-    @Shadow @Final protected Set<ChunkPos> chunkRebuildQueue;
 
     @Shadow abstract void onPostPlacementChange(SchematicPlacement placement);
 
@@ -110,20 +109,19 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
     }
 
     /**
-     * Litematica 0.17.4 rebuilds the schematic chunks directly in processQueuedChunks (there is no rebuild task class
-     * as in 0.29), so that is where the frozen chunks are kept out while a move is pending. They are put back one by
-     * one when the move is committed.
+     * Litematica 0.9.0 rebuilds the schematic chunks directly in processQueuedChunks and keeps a single set,
+     * chunksToRebuild, that serves as the rebuild queue, so that is where the frozen chunks are kept out while a move
+     * is pending. They are put back one by one when the move is committed.
      */
     @Inject(method = "processQueuedChunks", at = @At("HEAD"))
-    private void skipFrozenChunks(CallbackInfo ci) {
+    private void skipFrozenChunks(CallbackInfoReturnable<Boolean> cir) {
         if (!PendingMoveTracker.hasAnyPending()) return;
 
-        Iterator<ChunkPos> iterator = this.chunkRebuildQueue.iterator();
+        Iterator<ChunkPos> iterator = this.chunksToRebuild.iterator();
         while (iterator.hasNext()) {
             ChunkPos pos = iterator.next();
             if (PendingMoveTracker.isFrozenChunk(pos.x, pos.z)) {
                 iterator.remove();
-                this.chunksToRebuild.remove(pos);
                 PendingMoveTracker.markSkippedRebuild(pos.x, pos.z);
             }
         }

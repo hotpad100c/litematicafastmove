@@ -188,7 +188,7 @@ public final class PlacementMeshRenderer {
                                               SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
         Frustum fr = frustum;
-        int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
+        int renderDistance = (Minecraft.getInstance().options.renderDistance + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : PlacementMeshManager.meshes().entrySet()) {

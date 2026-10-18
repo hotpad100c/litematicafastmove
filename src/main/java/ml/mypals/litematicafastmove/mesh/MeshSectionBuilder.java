@@ -360,7 +360,7 @@ public final class MeshSectionBuilder {
             FluidState fluidState = state.getFluidState();
             if (fluidState.isEmpty() == false) {
                 RenderType layer = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderLayer(fluidState);
-                Minecraft.getInstance().getBlockRenderer().renderLiquid(pos, view, buffers.apply(layer), state, fluidState);
+                Minecraft.getInstance().getBlockRenderer().renderLiquid(pos, view, buffers.apply(layer), fluidState);
             }
 
             if (state.getRenderShape() == RenderShape.MODEL) {
