@@ -17,7 +17,6 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
@@ -54,9 +53,10 @@ public class MixinWorldRendererSchematic {
         });
     }
 
+    // Litematica 0.16.1 has no ProfilerFiller argument on setupTerrain (0.29 gained it).
     @Inject(method = "setupTerrain", at = @At("HEAD"))
     private void captureFrustum(Camera camera, Frustum frustum, int frameCount, boolean playerSpectator,
-                                ProfilerFiller profiler, CallbackInfo ci) {
+                                CallbackInfo ci) {
         PlacementMeshRenderer.captureFrustum(frustum);
     }
 
