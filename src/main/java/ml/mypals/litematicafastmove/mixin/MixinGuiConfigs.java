@@ -19,7 +19,7 @@ public abstract class MixinGuiConfigs {
     @ModifyReturnValue(method = "getConfigs", at = @At("RETURN"))
     private List<ConfigOptionWrapper> appendFastMoveConfigs(List<ConfigOptionWrapper> configs) {
         GuiConfigs.ConfigGuiTab tab = DataManager.getConfigGuiTab();
-        if (tab != GuiConfigs.ConfigGuiTab.GENERIC && tab != GuiConfigs.ConfigGuiTab.ALL) return configs;
+        if (tab != GuiConfigs.ConfigGuiTab.GENERIC) return configs;
 
         List<ConfigOptionWrapper> result = new ArrayList<>(configs);
         result.add(new ConfigOptionWrapper(StringUtils.translate("litematicafastmove.config.category")));

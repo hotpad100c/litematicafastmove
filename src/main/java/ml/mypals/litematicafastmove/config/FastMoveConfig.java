@@ -17,40 +17,42 @@ import net.minecraft.core.BlockPos;
 /**
  * 配置项注入 Litematica：保存在 litematica.json 的 "FastMove" 分类下，显示在 Litematica 配置界面的 Generic 页
  * (见 MixinConfigs / MixinGuiConfigs)。名称与说明见 assets/litematicafastmove/lang
+ *
+ * malilib 0.19.2 has no translation-key builder ({@code IConfigBase#apply}); the option name itself is the
+ * translation key, so the lang files carry bare keys such as {@code fastMoveEnabled}.
  */
 public class FastMoveConfig {
     public static final String CATEGORY = "FastMove";
-    private static final String KEY = "litematicafastmove.config";
 
-    public static final ConfigBoolean ENABLE_FAST_MOVE = new ConfigBoolean("fastMoveEnabled", true, "").apply(KEY);
-    public static final ConfigBoolean TAKEOVER_ALL_PLACEMENTS = new ConfigBoolean("fastMoveTakeoverAllPlacements", true, "").apply(KEY);
-    public static final ConfigInteger DETACHED_VOLUME_THRESHOLD = new ConfigInteger("fastMoveLargePlacementVolume", 32 * 32 * 32, 1, Integer.MAX_VALUE, "").apply(KEY);
-    public static final ConfigBoolean ENABLE_ASYNC_VERIFY = new ConfigBoolean("fastMoveAsyncVerifier", true, "").apply(KEY);
-    public static final ConfigInteger COMMIT_DELAY_MS = new ConfigInteger("fastMoveCommitDelay", 1500, 0, 60_000, "").apply(KEY);
+    public static final ConfigBoolean ENABLE_FAST_MOVE = new ConfigBoolean("fastMoveEnabled", true, "");
+    public static final ConfigBoolean TAKEOVER_ALL_PLACEMENTS = new ConfigBoolean("fastMoveTakeoverAllPlacements", true, "");
+    public static final ConfigInteger DETACHED_VOLUME_THRESHOLD = new ConfigInteger("fastMoveLargePlacementVolume", 32 * 32 * 32, 1, Integer.MAX_VALUE, "");
+    public static final ConfigBoolean ENABLE_ASYNC_VERIFY = new ConfigBoolean("fastMoveAsyncVerifier", true, "");
+    public static final ConfigInteger COMMIT_DELAY_MS = new ConfigInteger("fastMoveCommitDelay", 1500, 0, 60_000, "");
     // 移动后先按原位显示这么久；窗口内再次移动会重新计时，因此中间位置不会被渲染
-    public static final ConfigInteger RENDER_DELAY_MS = new ConfigInteger("fastMoveRenderDelay", 250, 0, 60_000, "").apply(KEY);
-    public static final ConfigDouble MOVE_SMOOTHING_MS = new ConfigDouble("fastMoveSmoothing", 60, 0, 1000, "").apply(KEY);
-    public static final ConfigDouble MOVE_SNAP_DISTANCE = new ConfigDouble("fastMoveSnapDistance", 128, 0, 30_000_000, "").apply(KEY);
+    public static final ConfigInteger RENDER_DELAY_MS = new ConfigInteger("fastMoveRenderDelay", 250, 0, 60_000, "");
+    public static final ConfigDouble MOVE_SMOOTHING_MS = new ConfigDouble("fastMoveSmoothing", 60, 0, 1000, "");
+    public static final ConfigDouble MOVE_SNAP_DISTANCE = new ConfigDouble("fastMoveSnapDistance", 128, 0, 30_000_000, "");
 
     // 每帧预算 (渲染线程)
-    public static final ConfigInteger UPLOAD_KB_PER_FRAME = new ConfigInteger("fastMoveUploadKbPerFrame", 8 * 1024, 64, 1024 * 1024, "").apply(KEY);
-    public static final ConfigDouble UPLOAD_MILLIS_PER_FRAME = new ConfigDouble("fastMoveUploadMsPerFrame", 3.0, 0.1, 100, "").apply(KEY);
-    public static final ConfigInteger TRANSLUCENT_RESORTS_PER_FRAME = new ConfigInteger("fastMoveResortsPerFrame", 32, 0, 4096, "").apply(KEY);
-    public static final ConfigDouble TRANSLUCENT_RESORT_DISTANCE = new ConfigDouble("fastMoveResortDistance", 1.0, 0, 64, "").apply(KEY);
+    public static final ConfigInteger UPLOAD_KB_PER_FRAME = new ConfigInteger("fastMoveUploadKbPerFrame", 8 * 1024, 64, 1024 * 1024, "");
+    public static final ConfigDouble UPLOAD_MILLIS_PER_FRAME = new ConfigDouble("fastMoveUploadMsPerFrame", 3.0, 0.1, 100, "");
+    public static final ConfigInteger TRANSLUCENT_RESORTS_PER_FRAME = new ConfigInteger("fastMoveResortsPerFrame", 32, 0, 4096, "");
+    public static final ConfigDouble TRANSLUCENT_RESORT_DISTANCE = new ConfigDouble("fastMoveResortDistance", 1.0, 0, 64, "");
 
     // 网格构建每批处理的区段数：小批次能更早显示、更均匀地分散到各构建线程
-    public static final ConfigInteger BUILD_BATCH_SECTIONS = new ConfigInteger("fastMoveBuildBatchSections", 32, 1, 4096, "").apply(KEY);
+    public static final ConfigInteger BUILD_BATCH_SECTIONS = new ConfigInteger("fastMoveBuildBatchSections", 32, 1, 4096, "");
 
     // 每 tick 预算 (主线程)
-    public static final ConfigInteger VERIFIER_MERGE_MILLIS_PER_TICK = new ConfigInteger("fastMoveVerifierMergeMsPerTick", 50, 1, 1000, "").apply(KEY);
+    public static final ConfigInteger VERIFIER_MERGE_MILLIS_PER_TICK = new ConfigInteger("fastMoveVerifierMergeMsPerTick", 50, 1, 1000, "");
 
     // 线程数 (0 = 自动)
-    public static final ConfigInteger MESH_BUILDER_THREADS = new ConfigInteger("fastMoveMeshBuilderThreads", 0, 0, 64, "").apply(KEY);
-    public static final ConfigInteger VERIFIER_THREADS = new ConfigInteger("fastMoveVerifierThreads", 0, 0, 64, "").apply(KEY);
+    public static final ConfigInteger MESH_BUILDER_THREADS = new ConfigInteger("fastMoveMeshBuilderThreads", 0, 0, 64, "");
+    public static final ConfigInteger VERIFIER_THREADS = new ConfigInteger("fastMoveVerifierThreads", 0, 0, 64, "");
 
     // 调试：在正在处理的区段上画淡出的 Gizmo 框
-    public static final ConfigBoolean DEBUG_GIZMOS = new ConfigBoolean("fastMoveDebugGizmos", false, "").apply(KEY);
-    public static final ConfigInteger DEBUG_GIZMO_MILLIS = new ConfigInteger("fastMoveDebugGizmoDuration", 800, 50, 10_000, "").apply(KEY);
+    public static final ConfigBoolean DEBUG_GIZMOS = new ConfigBoolean("fastMoveDebugGizmos", false, "");
+    public static final ConfigInteger DEBUG_GIZMO_MILLIS = new ConfigInteger("fastMoveDebugGizmoDuration", 800, 50, 10_000, "");
 
     public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
             ENABLE_FAST_MOVE,

@@ -46,7 +46,7 @@ public class PlacementBlockAccessor {
         for (SubRegionPlacement subPlacement : placement.getAllSubRegionsPlacements()) {
             if (!subPlacement.isEnabled()) continue;
             String name = subPlacement.getName();
-            Vec3i size = schematic.getAreaSizeAsVec3i(name);
+            Vec3i size = schematic.getAreaSize(name);
             LitematicaBlockStateContainer container = schematic.getSubRegionContainer(name);
             if (size == null || container == null) continue;
 

@@ -1,8 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.device.GpuDevice;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -54,7 +53,6 @@ final class MeshUploader {
         }
 
         Budget budget = new Budget();
-        Set<Long> blockEntityChunks = new HashSet<>();
 
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : PlacementMeshManager.meshes().entrySet()) {
             if (!budget.hasRemaining()) break;
@@ -65,7 +63,7 @@ final class MeshUploader {
             if (full != null) {
                 upload(mesh, full, budget);
                 if (!full.isFullyUploaded()) continue;
-                activateFull(placement, mesh, full, blockEntityChunks);
+                activateFull(placement, mesh, full);
                 MeshDebugGizmos.fullBuild(mesh.targetAccessor, placement.getOrigin().subtract(full.buildOrigin), true);
             }
 
@@ -74,13 +72,12 @@ final class MeshUploader {
                 upload(mesh, partial, budget);
                 if (!partial.isFullyUploaded()) break;
                 mesh.uploadingPartials.poll();
-                PlacementBlockEntities.update(placement, mesh, partial, blockEntityChunks);
+                PlacementBlockEntities.update(placement, mesh, partial);
                 MeshDebugGizmos.sectionsApplied(mesh.targetAccessor, partial.keys, placement.getOrigin().subtract(partial.buildOrigin));
                 applyPartial(mesh, partial);
             }
         }
 
-        PlacementBlockEntities.scheduleLitematicaChunks(blockEntityChunks);
         TranslucentSorter.applyResorted();
     }
 
@@ -99,8 +96,7 @@ final class MeshUploader {
         }
     }
 
-    private static void activateFull(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full,
-                                     Set<Long> blockEntityChunks) {
+    private static void activateFull(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full) {
         LitematicaFastMove.LOGGER.debug("Detached placement mesh ready: {} sections (generation {})",
                 full.uploaded.size(), full.generation);
         mesh.active.values().forEach(section -> section.closeExcept(full.borrowed));
@@ -113,7 +109,7 @@ final class MeshUploader {
         mesh.activeGeneration = full.generation;
         mesh.activeBuildOrigin = full.buildOrigin;
         mesh.uploadingFull = null;
-        PlacementBlockEntities.replace(placement, mesh, full, blockEntityChunks);
+        PlacementBlockEntities.replace(placement, mesh, full);
 
         mesh.uploadingPartials.forEach(PlacementMesh.BuiltPlacementBuffer::discard);
         mesh.uploadingPartials.clear();
@@ -145,8 +141,6 @@ final class MeshUploader {
     }
 
     private static void upload(PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer buffer, Budget budget) {
-        GpuDevice device = RenderSystem.getDevice();
-
         while (budget.hasRemaining() && !buffer.isFullyUploaded()) {
             budget.usedAny = true;
             PlacementMesh.CpuSection section = buffer.pending.get(buffer.nextToUpload++);
@@ -162,21 +156,16 @@ final class MeshUploader {
                     continue;
                 }
 
-                budget.bytes -= layer.vertices().remaining();
-                GpuBuffer vertexBuffer = device.createBuffer(() -> "litematicafastmove:placement_mesh",
-                        GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_COPY_DST, layer.vertices());
-                GpuBuffer indexBuffer = null;
-                PlacementMesh.SortInfo sort = null;
-                if (layer.indices() != null) {
-                    budget.bytes -= layer.indices().remaining();
-                    indexBuffer = device.createBuffer(() -> "litematicafastmove:placement_mesh_indices",
-                            GpuBuffer.USAGE_INDEX | GpuBuffer.USAGE_COPY_DST, layer.indices());
-                    sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN);
-                }
-                int vertexBytes = layer.vertices().remaining();
-                layer.free();
-                layers.add(new PlacementMesh.GpuLayer(layer.layer(), layer.overlay(), vertexBuffer, layer.indexCount(),
-                        indexBuffer, layer.indexType(), sort, vertexBytes, layer.hash()));
+                budget.bytes -= layer.vertexBytes;
+                VertexBuffer vertexBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                // VertexBuffer#upload asserts the render thread and releases the RenderedBuffer itself.
+                vertexBuffer.upload(layer.take());
+                layer.releaseBuilder();
+                PlacementMesh.SortInfo sort = layer.sortState != null
+                        ? new PlacementMesh.SortInfo(layer.sortState, Double.NaN, Double.NaN, Double.NaN)
+                        : null;
+                layers.add(new PlacementMesh.GpuLayer(layer.layer, layer.overlay, vertexBuffer, layer.indexCount,
+                        layer.vertexBytes, sort, layer.hash));
             }
             buffer.uploaded.add(new PlacementMesh.GpuSection(section.key(), section.origin(),
                     section.hasBlocks(), section.clientEmpty(), section.clip(), layers, section.blockEntities()));
@@ -186,8 +175,13 @@ final class MeshUploader {
     private static PlacementMesh.GpuLayer findSameContent(PlacementMesh.GpuSection old, PlacementMesh.CpuLayer layer) {
         if (old == null) return null;
         for (PlacementMesh.GpuLayer candidate : old.layers()) {
-            if (!candidate.vertexBuffer().isClosed() && candidate.sameContent(layer)) return candidate;
+            if (candidate.sameContent(layer)) return candidate;
         }
         return null;
+    }
+
+    /** Handed back by {@link TranslucentSorter} after the sorted index buffer was uploaded. */
+    static void releaseBuilder(BufferBuilder builder) {
+        builder.release();
     }
 }
