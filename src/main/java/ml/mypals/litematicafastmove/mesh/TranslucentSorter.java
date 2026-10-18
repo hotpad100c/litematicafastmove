@@ -1,26 +1,18 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
-import org.lwjgl.system.MemoryUtil;
 
-import java.nio.ByteBuffer;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
+/**
+ * Re-sorts the translucent sections of the detached meshes.
+ * <p>
+ * 0.29's version sorts a copy of the index buffer on a worker thread. Minecraft 1.20.4's BufferBuilder owns the
+ * sorting points, so like Litematica's own chunk renderer this re-sorts a bounded number of sections synchronously on
+ * the render thread, and only when the camera moved far enough.
+ */
 public class TranslucentSorter {
-    private record Resorted(PlacementMesh.GpuLayer layer, ByteBuffer indices, double x, double y, double z) {}
-
-    private static final ExecutorService SORTER = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "LFMTranslucentSorter");
-        thread.setDaemon(true);
-        return thread;
-    });
-    private static final Queue<Resorted> RESORTED = new ConcurrentLinkedQueue<>();
 
     private int budget = FastMoveConfig.TRANSLUCENT_RESORTS_PER_FRAME.getIntegerValue();
 
@@ -40,32 +32,19 @@ public class TranslucentSorter {
 
         this.budget--;
         sort.pending = true;
-        int size = layer.indexCount() * layer.indexType().bytes;
-        SORTER.submit(() -> {
-            ByteBuffer indices = MemoryUtil.memAlloc(size);
-            try {
-                sort.state.writeSortedIndexBuffer(indices, VertexSorting.byDistance((float) rx, (float) ry, (float) rz));
-                indices.position(0).limit(size);
-                RESORTED.add(new Resorted(layer, indices, rx, ry, rz));
-            } catch (Throwable e) {
-                MemoryUtil.memFree(indices);
-                LitematicaFastMove.LOGGER.debug("Failed to resort translucent section", e);
-            }
-        });
-    }
-
-    static void applyResorted() {
-        Resorted resorted;
-        while ((resorted = RESORTED.poll()) != null) {
-            PlacementMesh.GpuLayer layer = resorted.layer();
-            if (layer.indexBuffer() != null && !layer.indexBuffer().isClosed()) {
-                RenderSystem.getDevice().createCommandEncoder().writeToBuffer(layer.indexBuffer().slice(), resorted.indices());
-            }
-            MemoryUtil.memFree(resorted.indices());
-            layer.sort().lastX = resorted.x();
-            layer.sort().lastY = resorted.y();
-            layer.sort().lastZ = resorted.z();
-            layer.sort().pending = false;
+        try {
+            BufferBuilder builder = new BufferBuilder(4096);
+            builder.begin(sort.mode, sort.format);
+            builder.restoreSortState(sort.state);
+            builder.setQuadSorting(VertexSorting.byDistance((float) rx, (float) ry, (float) rz));
+            layer.vertexBuffer().upload(builder.end());
+            sort.lastX = rx;
+            sort.lastY = ry;
+            sort.lastZ = rz;
+        } catch (Throwable e) {
+            LitematicaFastMove.LOGGER.debug("Failed to resort translucent section", e);
+        } finally {
+            sort.pending = false;
         }
     }
 }

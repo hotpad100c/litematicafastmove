@@ -3,7 +3,7 @@ package ml.mypals.litematicafastmove.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import fi.dy.masa.litematica.render.schematic.BlockModelRendererSchematic;
-import fi.dy.masa.malilib.util.position.LayerRange;
+import fi.dy.masa.malilib.util.LayerRange;
 import ml.mypals.litematicafastmove.mesh.MeshSectionBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

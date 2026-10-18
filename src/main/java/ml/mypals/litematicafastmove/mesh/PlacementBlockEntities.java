@@ -1,7 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import fi.dy.masa.litematica.render.IWorldSchematicRenderer;
 import fi.dy.masa.litematica.render.LitematicaRenderer;
+import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.core.BlockPos;
@@ -80,9 +80,9 @@ public class PlacementBlockEntities {
     static void scheduleLitematicaChunks(Set<Long> chunks) {
         if (chunks.isEmpty()) return;
 
-        IWorldSchematicRenderer renderer = LitematicaRenderer.getInstance().getWorldRenderer();
+        WorldRendererSchematic renderer = LitematicaRenderer.getInstance().getWorldRenderer();
         for (long packed : chunks) {
-            renderer.scheduleChunkRenders(ChunkPos.getX(packed), ChunkPos.getZ(packed), false);
+            renderer.scheduleChunkRenders(ChunkPos.getX(packed), ChunkPos.getZ(packed));
         }
     }
 
@@ -94,7 +94,7 @@ public class PlacementBlockEntities {
     private static void addChunksOf(long[] positions, BlockPos offset, Set<Long> out) {
         if (positions == null) return;
         for (long packed : positions) {
-            out.add(ChunkPos.pack((BlockPos.getX(packed) + offset.getX()) >> 4, (BlockPos.getZ(packed) + offset.getZ()) >> 4));
+            out.add(ChunkPos.asLong((BlockPos.getX(packed) + offset.getX()) >> 4, (BlockPos.getZ(packed) + offset.getZ()) >> 4));
         }
     }
 }
