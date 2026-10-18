@@ -84,6 +84,12 @@ public final class PlacementMeshRenderer {
         if (!added[0]) return;
 
         layer.setupRenderState();
+        // 0.18.3 resets the ghost-block alpha before renderBlockLayer returns, so reapply it around our draws
+        boolean ghost = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
+        if (ghost) {
+            float alpha = (float) Configs.Visuals.GHOST_BLOCK_ALPHA.getDoubleValue();
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
+        }
         try {
             ShaderInstance shader = RenderSystem.getShader();
             RenderSystem.setupShaderLights(shader);
@@ -100,6 +106,9 @@ public final class PlacementMeshRenderer {
                 draw(draw.layer().vertexBuffer, modelView, projMatrix, shader, draw.ox(), draw.oy(), draw.oz());
             }
         } finally {
+            if (ghost) {
+                RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            }
             layer.clearRenderState();
         }
     }
