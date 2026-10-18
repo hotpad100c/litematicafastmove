@@ -1,5 +1,5 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 	id 'maven-publish'
 }
 
@@ -30,18 +30,19 @@ repositories {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 
-	implementation "maven.modrinth:bEpr0Arc:ZqV316KY" // Litematica 0.29.1
-	implementation "maven.modrinth:malilib:0.30.2"
+	modImplementation "maven.modrinth:bEpr0Arc:${project.litematica_version}" // Litematica 0.17.4
+	modImplementation "maven.modrinth:malilib:${project.malilib_version}"
 
 	// EXIT routes the schematic rendering past shader packs. Nested, so players do not install it separately.
 	// The Fabric jar carries the whole library (its own classes and the common ones), so the one artifact is enough.
-	implementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
+	modImplementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
 	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
 
 	// Iris and Sodium for the development runs only, the same versions EXIT is built against.
@@ -63,7 +64,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
+	it.options.release = 17
 }
 
 java {
@@ -72,8 +73,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 jar {
