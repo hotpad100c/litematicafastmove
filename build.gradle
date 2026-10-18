@@ -46,9 +46,10 @@ dependencies {
 	modImplementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
 	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
 
-	// Iris and Sodium for the development runs only, the same versions EXIT is built against.
-	localRuntime "maven.modrinth:YL57xq9U:${project.iris_version}"
-	localRuntime "maven.modrinth:AANobbMI:${project.sodium_version}"
+	// Iris and Sodium for the development runs only, the same versions EXIT is built against. They must go through
+	// Loom's remapping, or their intermediary class tweakers clash with the named development runtime.
+	modLocalRuntime "maven.modrinth:YL57xq9U:${project.iris_version}"
+	modLocalRuntime "maven.modrinth:AANobbMI:${project.sodium_version}"
 }
 
 // Iris and Sodium nest libraries (jcpp, ANTLR, glsl-transformer, ...) in their jars, but the development runtime
