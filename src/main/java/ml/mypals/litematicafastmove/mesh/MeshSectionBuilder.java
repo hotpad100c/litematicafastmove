@@ -1,16 +1,11 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.blaze3d.vertex.VertexSorting;
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import fi.dy.masa.litematica.config.Configs;
-import fi.dy.masa.litematica.render.schematic.BlockModelCacheSchematic;
 import fi.dy.masa.litematica.render.schematic.BlockModelRendererSchematic;
-import fi.dy.masa.litematica.render.schematic.FluidModelRendererSchematic;
-import fi.dy.masa.litematica.render.schematic.IBlockOutputSchematic;
-import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
+import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -18,13 +13,12 @@ import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
 import ml.mypals.litematicafastmove.config.ThreadPools;
-import ml.mypals.litematicafastmove.mixin.BlockModelCacheSchematicAccessor;
+import ml.mypals.litematicafastmove.mixin.BufferBuilderAccessor;
 import ml.mypals.litematicafastmove.render.SchematicExit;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.block.FluidRenderer;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -32,7 +26,6 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
-import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -42,10 +35,9 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 
 public final class MeshSectionBuilder {
@@ -71,15 +63,15 @@ public final class MeshSectionBuilder {
     }
 
     /**
-     * 提交构建；keys == null 为完整构建。区段按离相机由近到远分批，分散到所有构建线程并行处理：
-     * 局部构建每批完成即交给 onBuilt，逐批生效；完整构建等所有批次完成后合并为一次整体替换。
-     * 被新一代构建取代时直接丢弃
+     * Submits a build; keys == null builds everything. Sections are sorted nearest-camera-first and spread over all
+     * builder threads in batches: partial builds hand each finished batch to onBuilt at once, full builds merge them
+     * into one replacement. Builds superseded by a newer generation are dropped.
      */
     static void submit(SchematicPlacement placement, PlacementMesh mesh, int generation, PlacementBlockAccessor accessor,
                        BlockPos buildOrigin, Set<Long> keys, BlockPos clientDelta, WorldSchematic world, ClientLevel clientLevel,
                        Consumer<PlacementMesh.BuiltPlacementBuffer> onBuilt) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Vec3 camera = Minecraft.getInstance().gameRenderer.mainCamera().position();
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         boolean full = keys == null;
 
         List<Long> sectionKeys = full ? allSections(accessor) : new ArrayList<>(keys);
@@ -95,7 +87,7 @@ public final class MeshSectionBuilder {
                     SchematicExit.plainFormat(() -> built.add(
                             build(mesh, generation, accessor, batch, !full,
                                     clientDelta, range, camera, world, clientLevel)));
-                    sections = built.getFirst();
+                    sections = built.get(0);
                 } catch (Throwable e) {
                     LitematicaFastMove.LOGGER.error("Failed to build mesh for placement '{}'", placement.getName(), e);
                 }
@@ -118,7 +110,8 @@ public final class MeshSectionBuilder {
         private int remaining;
         private boolean failed;
 
-        FullBuild(SchematicPlacement placement, int generation, BlockPos buildOrigin, int batches, Consumer<PlacementMesh.BuiltPlacementBuffer> onBuilt) {
+        FullBuild(SchematicPlacement placement, int generation, BlockPos buildOrigin, int batches,
+                  Consumer<PlacementMesh.BuiltPlacementBuffer> onBuilt) {
             this.placement = placement;
             this.generation = generation;
             this.buildOrigin = buildOrigin;
@@ -175,7 +168,7 @@ public final class MeshSectionBuilder {
         return batches;
     }
 
-    // emitEmpty：局部构建时空区段也要返回，用于清除旧网格
+    // emitEmpty: a partial build also returns empty sections, so their old meshes are cleared
     private static List<PlacementMesh.CpuSection> build(PlacementMesh mesh, int generation, PlacementBlockAccessor accessor,
                                                         List<Long> sectionKeys, boolean emitEmpty, BlockPos clientDelta,
                                                         LayerRangeClip.Range range, Vec3 camera,
@@ -185,9 +178,6 @@ public final class MeshSectionBuilder {
 
         List<PlacementMesh.CpuSection> sections = new ArrayList<>();
         DetachedBlockView view = new DetachedBlockView(accessor, world, clientLevel);
-        EnumMap<ChunkSectionLayer, ByteBufferBuilder> allocators = new EnumMap<>(ChunkSectionLayer.class);
-        EnumMap<ChunkSectionLayer, BufferBuilder> builders = new EnumMap<>(ChunkSectionLayer.class);
-        ByteBufferBuilder sortAllocator = new ByteBufferBuilder(64 * 1024);
 
         Direction.Axis clipAxis = range != null ? range.axis() : null;
         int clipMin = Integer.MIN_VALUE, clipMax = Integer.MAX_VALUE;
@@ -198,36 +188,14 @@ public final class MeshSectionBuilder {
             view.setClip(clipAxis, clipMin, clipMax);
         }
 
-        BlockModelRendererSchematic blockRenderer = new BlockModelRendererSchematic();
-        blockRenderer.toggleAO(true);
-        blockRenderer.toggleCulling(true);
-        blockRenderer.reload();
-        blockRenderer.enableCache();
-        FluidModelRendererSchematic fluidRenderer = new FluidModelRendererSchematic(
-                ((BlockModelCacheSchematicAccessor) BlockModelCacheSchematic.INSTANCE).litematicafastmove$fluidStateModelSet());
+        BlockModelRendererSchematic blockRenderer = new BlockModelRendererSchematic(Minecraft.getInstance().getBlockColors());
 
         boolean translucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
-        boolean renderFluids = Configs.Visuals.ENABLE_SCHEMATIC_FLUIDS.getBooleanValue();
         boolean renderColliding = Configs.Visuals.RENDER_COLLIDING_SCHEMATIC_BLOCKS.getBooleanValue();
-
-        FluidRenderer.Output fluidOutput = layer -> builder(builders, allocators, layer);
-        IBlockOutputSchematic blockOutput = (bx, by, bz, quad, inst) ->
-                builder(builders, allocators, translucent ? ChunkSectionLayer.TRANSLUCENT : quad.materialInfo().layer())
-                        .putBlockBakedQuad(bx, by, bz, quad, inst);
 
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos clientPos = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos overlayClientPos = new BlockPos.MutableBlockPos();
-
-        EnumMap<OverlayRenderType, ByteBufferBuilder> overlayAllocators = new EnumMap<>(OverlayRenderType.class);
-        EnumMap<OverlayRenderType, BufferBuilder> overlayBuilders = new EnumMap<>(OverlayRenderType.class);
-        OverlayMeshBuilder overlay = OverlayMeshBuilder.isEnabled()
-                ? new OverlayMeshBuilder(view,
-                        p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
-                        type -> overlayBuilders.computeIfAbsent(type, t -> new BufferBuilder(
-                                overlayAllocators.computeIfAbsent(t, k -> new ByteBufferBuilder(256 * 1024)),
-                                t.topology(), t.vertexFormat())))
-                : null;
 
         try {
             for (long key : sectionKeys) {
@@ -242,17 +210,26 @@ public final class MeshSectionBuilder {
                 int y0 = Math.max(sy << 4, min.getY()), y1 = Math.min((sy << 4) + 15, max.getY());
                 int z0 = Math.max(sz << 4, min.getZ()), z1 = Math.min((sz << 4) + 15, max.getZ());
                 PlacementMesh.Clip clip = LayerRangeClip.compute(range, min, max, sectionOrigin, clientDelta);
-                List<PlacementMesh.CpuLayer> layers = new ArrayList<>();
                 LongArrayList blockEntities = new LongArrayList();
 
                 boolean hasSchematicBlocks = view.loadSection(sx, sy, sz);
                 boolean hasBlocks = view.hasUnclippedBlocks();
                 boolean clippedAway = clip != null && clip.isEmpty();
                 boolean clientEmpty = ClientRegions.isSectionEmpty(clientLevel, min, max, key, clientDelta);
-                // 投影这里全是空气时只可能出现 overlay 的"多余方块"，客户端对应区域也为空就跳过
-                boolean scan = !clippedAway && (hasSchematicBlocks || (overlay != null && !clientEmpty));
+                // With only air in the schematic there can still be overlay "extra blocks", but not if the client area is air too
+                boolean scan = !clippedAway && (hasSchematicBlocks || !clientEmpty);
+                boolean overlayEnabled = OverlayMeshBuilder.isEnabled();
+
+                Map<RenderType, BufferBuilder> builders = new java.util.HashMap<>();
+                Map<OverlayRenderType, BufferBuilder> overlayBuilders = new EnumMap<>(OverlayRenderType.class);
 
                 if (scan) {
+                    OverlayMeshBuilder overlay = overlayEnabled
+                            ? new OverlayMeshBuilder(view,
+                                    p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
+                                    type -> overlayBuilders.computeIfAbsent(type, t -> newBuffer(t.getDrawMode(), com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR, 256 * 1024)))
+                            : null;
+
                     for (int y = y0; y <= y1; y++) {
                         for (int z = z0; z <= z1; z++) {
                             for (int x = x0; x <= x1; x++) {
@@ -272,7 +249,9 @@ public final class MeshSectionBuilder {
 
                                 boolean missing = false;
                                 if (!schematicAir && (clientAir || (renderColliding && clientState != state))) {
-                                    tessellate(view, state, pos, blockRenderer, fluidRenderer, blockOutput, fluidOutput, renderFluids);
+                                    tessellate(view, state, pos, blockRenderer,
+                                            layer -> builders.computeIfAbsent(translucent ? RenderType.translucent() : layer,
+                                                    l -> newBuffer(l.mode(), l.format(), l.bufferSize())));
                                     if (state.hasBlockEntity()) {
                                         blockEntities.add(BlockPos.asLong(x, y, z));
                                     }
@@ -289,75 +268,108 @@ public final class MeshSectionBuilder {
                             }
                         }
                     }
-
-                    for (Map.Entry<ChunkSectionLayer, BufferBuilder> entry : builders.entrySet()) {
-                        MeshData meshData = entry.getValue().build();
-                        if (meshData == null) continue;
-
-                        ByteBuffer indices = null;
-                        MeshData.SortState sortState = null;
-                        if (entry.getKey().translucent()) {
-                            sortState = meshData.sortQuads(sortAllocator, VertexSorting.byDistance(
-                                    (float) (camera.x - sectionOrigin.getX() - clientDelta.getX()),
-                                    (float) (camera.y - sectionOrigin.getY() - clientDelta.getY()),
-                                    (float) (camera.z - sectionOrigin.getZ() - clientDelta.getZ())));
-                            if (sortState != null && meshData.indexBuffer() != null) {
-                                indices = copy(Objects.requireNonNull(meshData.indexBuffer()));
-                            } else {
-                                sortState = null;
-                            }
-                        }
-
-                        ByteBuffer vertices = copy(meshData.vertexBuffer());
-                        layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, vertices,
-                                meshData.drawState().indexCount(), indices, sortState != null ? sortState.indexType() : null, sortState, hash(vertices)));
-                        meshData.close();
-                    }
-                    for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
-                        MeshData meshData = entry.getValue().build();
-                        if (meshData != null) {
-                            ByteBuffer vertices = copy(meshData.vertexBuffer());
-                            layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), vertices,
-                                    meshData.drawState().indexCount(), null, null, null, hash(vertices)));
-                            meshData.close();
-                        }
-                    }
-                    builders.clear();
-                    overlayBuilders.clear();
-                    allocators.values().forEach(ByteBufferBuilder::clear);
-                    overlayAllocators.values().forEach(ByteBufferBuilder::clear);
-                    sortAllocator.clear();
                 }
 
-                // 局部构建时空区段也要返回，用于清除旧网格；有方块但被裁空的区段保留记录
+                List<PlacementMesh.CpuLayer> layers = new ArrayList<>();
+                float cameraX = (float) (camera.x - sectionOrigin.getX() - clientDelta.getX());
+                float cameraY = (float) (camera.y - sectionOrigin.getY() - clientDelta.getY());
+                float cameraZ = (float) (camera.z - sectionOrigin.getZ() - clientDelta.getZ());
+
+                for (Map.Entry<RenderType, BufferBuilder> entry : builders.entrySet()) {
+                    BufferBuilder builder = entry.getValue();
+                    boolean isTranslucent = entry.getKey() == RenderType.translucent();
+                    BufferBuilder.SortState sortState = null;
+                    if (isTranslucent) {
+                        // 1.20 replaced the sort origin with a VertexSorting; here the BufferBuilder still sorts the
+                        // quads around setQuadSortOrigin, which is exactly what the vanilla chunk resort does.
+                        builder.setQuadSortOrigin(cameraX, cameraY, cameraZ);
+                        sortState = builder.getSortState();
+                    }
+                    builder.end();
+                    int indexCount = indexCount(builder);
+                    if (indexCount == 0) {
+                        continue;
+                    }
+                    int vertexBytes = bufferBytes(builder);
+                    layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, builder,
+                            indexCount, sortState, vertexBytes, contentHash(builder)));
+                }
+                for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
+                    BufferBuilder builder = entry.getValue();
+                    builder.end();
+                    int indexCount = indexCount(builder);
+                    if (indexCount == 0) {
+                        continue;
+                    }
+                    int vertexBytes = bufferBytes(builder);
+                    layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), builder,
+                            indexCount, null, vertexBytes, contentHash(builder)));
+                }
+
+                // Section is only kept when there is something in it, or when a partial build must clear it
                 if (hasBlocks || !layers.isEmpty() || emitEmpty) {
                     sections.add(new PlacementMesh.CpuSection(key, sectionOrigin, hasBlocks, clientEmpty, clip, layers, blockEntities.toLongArray()));
+                } else {
+                    layers.forEach(PlacementMesh.CpuLayer::free);
                 }
             }
         } finally {
-            blockRenderer.disableCache();
-            allocators.values().forEach(ByteBufferBuilder::close);
-            overlayAllocators.values().forEach(ByteBufferBuilder::close);
-            sortAllocator.close();
+            // nothing to close: every builder's data is owned by the BufferBuilder we kept or dropped
         }
 
         return sections;
     }
 
+    /** Number of indices the just-ended builder wrote (0 means it holds no geometry at all). */
+    private static int indexCount(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
+        return states.isEmpty() ? 0 : states.get(states.size() - 1).indexCount();
+    }
+
+    /** Bytes the upload of the just-ended builder will move (vertices plus indices). */
+    private static int bufferBytes(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
+        return states.isEmpty() ? 0 : states.get(states.size() - 1).bufferSize();
+    }
+
+    /**
+     * Content hash of the finished buffer. Unlike 1.19.3's RenderedBuffer there is no public handle on the data before
+     * the upload pops it, so the accessor mixin reads the builder's own ByteBuffer here on the builder thread.
+     */
+    private static long contentHash(BufferBuilder builder) {
+        BufferBuilderAccessor access = (BufferBuilderAccessor) builder;
+        int total = access.lfm$totalRenderedBytes();
+        ByteBuffer buffer = access.lfm$buffer();
+        if (total <= 0 || buffer == null) return 0L;
+        ByteBuffer bytes = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+        bytes.position(0);
+        bytes.limit(Math.min(total, bytes.capacity()));
+        return hash(bytes);
+    }
+
+    private static BufferBuilder newBuffer(VertexFormat.Mode mode, VertexFormat format, int capacity) {
+        BufferBuilder builder = new BufferBuilder(capacity);
+        builder.begin(mode, format);
+        return builder;
+    }
+
     private static void tessellate(DetachedBlockView view, BlockState state, BlockPos pos,
-                                   BlockModelRendererSchematic blockRenderer, FluidModelRendererSchematic fluidRenderer,
-                                   IBlockOutputSchematic blockOutput, FluidRenderer.Output fluidOutput, boolean renderFluids) {
+                                   BlockModelRendererSchematic blockRenderer,
+                                   java.util.function.Function<RenderType, BufferBuilder> buffers) {
         try {
             FluidState fluidState = state.getFluidState();
-            if (renderFluids && !fluidState.isEmpty()) {
-                fluidRenderer.tesselate(view, pos, fluidOutput, state, fluidState);
+            if (fluidState.isEmpty() == false) {
+                RenderType layer = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderLayer(fluidState);
+                Minecraft.getInstance().getBlockRenderer().renderLiquid(pos, view, buffers.apply(layer), state, fluidState);
             }
 
             if (state.getRenderShape() == RenderShape.MODEL) {
-                BlockStateModel model = BlockModelCacheSchematic.INSTANCE.fetchBlockStateModel(state);
+                BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
                 if (model != null) {
-                    Vec3 offset = new Vec3(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
-                    blockRenderer.tessellateBlock(view, state, pos, offset, model, state.getSeed(pos), blockOutput);
+                    PoseStack matrices = new PoseStack();
+                    matrices.translate(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
+                    RenderType layer = net.minecraft.client.renderer.ItemBlockRenderTypes.getChunkRenderType(state);
+                    blockRenderer.renderModel(view, model, state, pos, matrices, buffers.apply(layer), state.getSeed(pos));
                 }
             }
         } catch (Throwable e) {
@@ -365,22 +377,9 @@ public final class MeshSectionBuilder {
         }
     }
 
-    private static BufferBuilder builder(EnumMap<ChunkSectionLayer, BufferBuilder> builders,
-                                         EnumMap<ChunkSectionLayer, ByteBufferBuilder> allocators, ChunkSectionLayer layer) {
-        return builders.computeIfAbsent(layer, l -> new BufferBuilder(
-                allocators.computeIfAbsent(l, k -> new ByteBufferBuilder(k.bufferSize())),
-                PrimitiveTopology.QUADS, l.vertexFormat()));
-    }
-
-    private static ByteBuffer copy(ByteBuffer source) {
-        ByteBuffer copy = MemoryUtil.memAlloc(source.remaining());
-        copy.put(source.duplicate());
-        copy.flip();
-        return copy;
-    }
-
-    // 64 位内容哈希，用于判断重建后的网格是否与旧网格相同
+    // 64 bit content hash, used to tell whether a rebuilt section is identical to the old one
     private static long hash(ByteBuffer buffer) {
+        if (buffer == null) return 0L;
         ByteBuffer b = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         int end = b.limit();
         long h = 0x9E3779B97F4A7C15L ^ (b.remaining() * 0xC2B2AE3D27D4EB4FL);

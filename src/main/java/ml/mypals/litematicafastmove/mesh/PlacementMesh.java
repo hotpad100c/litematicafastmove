@@ -1,16 +1,14 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.pipeline.IndexType;
-import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import org.lwjgl.system.MemoryUtil;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,63 +22,68 @@ import java.util.concurrent.ConcurrentHashMap;
 
 
 final class PlacementMesh {
-    // 层范围裁剪：沿 axis 只保留区段内相对坐标 [lo, hi]；null = 不裁剪，lo > hi = 整段裁掉
+    // Layer range clipping: along axis only the section-local coordinates [lo, hi] survive; null = no clipping,
+    // lo > hi = the whole section is clipped away
     record Clip(Direction.Axis axis, int lo, int hi) {
         boolean isEmpty() {
             return this.lo > this.hi;
         }
     }
 
-    // hash：顶点数据的内容哈希，与旧网格相同则直接沿用旧 buffer，不重新上传
-    record CpuLayer(ChunkSectionLayer layer, OverlayRenderType overlay, ByteBuffer vertices, int indexCount,
-                    ByteBuffer indices, IndexType indexType, MeshData.SortState sortState, long hash) {
+    /**
+     * Built on a worker thread. On 1.18.2 the ended BufferBuilder <i>is</i> the buffer: it owns its ByteBuffer until
+     * VertexBuffer#upload pops it, so the data survives until the render thread uploads it. hash: content hash of the
+     * vertex data, used to keep the old GPU buffer when a rebuild produced the same geometry.
+     */
+    record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder buffer,
+                    int indexCount, BufferBuilder.SortState sortState, int vertexBytes, long hash) {
         void free() {
-            MemoryUtil.memFree(this.vertices);
-            if (this.indices != null) {
-                MemoryUtil.memFree(this.indices);
-            }
+            // 1.18.2 has no pooled buffer to hand back: the direct ByteBuffer dies with the builder
         }
     }
-    // clientEmpty：构建时对应的真实世界区域 (外扩 1 格) 全是空气
-    // blockEntities：需要显示的方块实体位置 (构建坐标，BlockPos.asLong)，交给 Litematica 登记渲染
-    record CpuSection(long key, BlockPos origin, boolean hasBlocks, boolean clientEmpty, Clip clip, List<CpuLayer> layers, long[] blockEntities) {}
+    // clientEmpty: the matching area of the real world (grown by one block) is all air
+    // blockEntities: block entity positions to show (build coordinates, BlockPos.asLong), registered with Litematica
+    record CpuSection(long key, BlockPos origin, boolean hasBlocks, boolean clientEmpty, Clip clip,
+                      List<CpuLayer> layers, long[] blockEntities) {}
 
     static final class SortInfo {
-        final MeshData.SortState state;
+        final BufferBuilder.SortState state;
+        final VertexFormat.Mode mode;
+        final VertexFormat format;
         double lastX, lastY, lastZ;
         boolean pending;
 
-        SortInfo(MeshData.SortState state, double x, double y, double z) {
+        SortInfo(BufferBuilder.SortState state, double x, double y, double z, VertexFormat.Mode mode, VertexFormat format) {
             this.state = state;
             this.lastX = x;
             this.lastY = y;
             this.lastZ = z;
+            this.mode = mode;
+            this.format = format;
         }
     }
 
-    record GpuLayer(ChunkSectionLayer layer, OverlayRenderType overlay, GpuBuffer vertexBuffer, int indexCount,
-                    GpuBuffer indexBuffer, IndexType indexType, SortInfo sort, int vertexBytes, long hash) {
+    record GpuLayer(RenderType layer, OverlayRenderType overlay, VertexBuffer vertexBuffer, int indexCount,
+                    SortInfo sort, int vertexBytes, long hash) {
         boolean sameContent(CpuLayer cpu) {
             return this.layer == cpu.layer() && this.overlay == cpu.overlay() && this.indexCount == cpu.indexCount() &&
-                   this.vertexBytes == cpu.vertices().remaining() && this.hash == cpu.hash();
+                   this.vertexBytes == cpu.vertexBytes() && this.hash == cpu.hash();
         }
 
         void close() {
             this.vertexBuffer.close();
-            if (this.indexBuffer != null) {
-                this.indexBuffer.close();
-            }
         }
     }
-    // hasBlocks：区段内有投影方块，即使被层范围裁空也保留，范围变化时据此判断是否重建
-    record GpuSection(long key, BlockPos origin, boolean hasBlocks, boolean clientEmpty, Clip clip, List<GpuLayer> layers, long[] blockEntities) {
+    // hasBlocks: the section contains schematic blocks, so it is kept even when the layer range clips it away
+    record GpuSection(long key, BlockPos origin, boolean hasBlocks, boolean clientEmpty, Clip clip,
+                      List<GpuLayer> layers, long[] blockEntities) {
         void close() {
             for (GpuLayer layer : this.layers) {
                 layer.close();
             }
         }
 
-        // 被新构建沿用的layer已转交给新区段，不能关闭
+        // Layers carried over into a new build are owned by the new section and must not be closed here
         void closeExcept(Set<GpuLayer> keep) {
             for (GpuLayer layer : this.layers) {
                 if (!keep.contains(layer)) layer.close();
@@ -95,7 +98,7 @@ final class PlacementMesh {
         final Set<Long> keys;
         final List<CpuSection> pending;
         final List<GpuSection> uploaded = new ArrayList<>();
-        // 从当前网格沿用的 layer (按引用比较)；应用前它们仍归旧区段所有
+        // Layers carried over from the current mesh (identity comparison); they still belong to the old section
         final Set<GpuLayer> borrowed = Collections.newSetFromMap(new IdentityHashMap<>());
         int nextToUpload;
 
@@ -128,7 +131,7 @@ final class PlacementMesh {
     volatile int requestedGeneration;
     volatile BlockPos targetBuildOrigin;
     volatile PlacementBlockAccessor targetAccessor;
-    // 当前生效网格中各区段的方块实体 (构建坐标)，供 Litematica 区块重建时登记
+    // Block entities of the sections currently in effect (build coordinates), for Litematica's chunk rebuilds
     final Map<Long, long[]> blockEntities = new ConcurrentHashMap<>();
     volatile BlockPos blockEntityBuildOrigin;
 
