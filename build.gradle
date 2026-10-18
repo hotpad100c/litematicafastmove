@@ -1,5 +1,5 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 	id 'maven-publish'
 }
 
@@ -30,27 +30,50 @@ repositories {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 
-	implementation "maven.modrinth:bEpr0Arc:ZqV316KY" // Litematica 0.29.1
-	implementation "maven.modrinth:malilib:0.30.2"
+	modImplementation "maven.modrinth:bEpr0Arc:${project.litematica_version}" // Litematica 0.13.2
+	modImplementation "maven.modrinth:malilib:${project.malilib_version}" // malilib 0.14.1-pre.1
 
 	// EXIT routes the schematic rendering past shader packs. Nested, so players do not install it separately.
 	// The Fabric jar carries the whole library (its own classes and the common ones), so the one artifact is enough.
-	implementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
+	modImplementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
 	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
 
 	// Iris and Sodium for the development runs only, the same versions EXIT is built against.
 	localRuntime "maven.modrinth:YL57xq9U:${project.iris_version}"
 	localRuntime "maven.modrinth:AANobbMI:${project.sodium_version}"
-	// Iris nests these in its jar, but the development runtime does not load nested jars of dependencies.
-	for (library in ["org.anarres:jcpp:1.4.14", "org.antlr:antlr4-runtime:4.13.1", "io.github.douira:glsl-transformer:3.0.0-pre3"]) {
-		localRuntime(library) { transitive = false }
+}
+
+// Iris and Sodium nest libraries (jcpp, ANTLR, glsl-transformer, JOML before 1.19.3; versions differ per build) in
+// their jars, but the development runtime does not load the nested jars of dependencies; without them Iris fails as
+// soon as it reads a shader pack. The set and versions differ per Minecraft version, so take the copies from those
+// jars themselves.
+def nestingJars = configurations.detachedConfiguration(
+		dependencies.create("maven.modrinth:YL57xq9U:${project.iris_version}"),
+		dependencies.create("maven.modrinth:AANobbMI:${project.sodium_version}")
+)
+nestingJars.transitive = false
+def nestedLibraries = tasks.register('nestedLibraries', Sync) {
+	from({ nestingJars.files.collect { zipTree(it) } }) {
+		include 'META-INF/jars/*.jar'
+		exclude 'META-INF/jars/fabric-*'
+		// Older Iris nests slf4j as a generated mod, which on the classpath hides every mod from Fabric Loader.
+		exclude 'META-INF/jars/slf4j-*'
+		eachFile { path = name }
 	}
+	includeEmptyDirs = false
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	into layout.buildDirectory.dir('nestedLibraries')
+}
+
+dependencies {
+	localRuntime(fileTree(nestedLibraries.map { it.destinationDir }) { include '*.jar' }.builtBy(nestedLibraries))
 }
 
 processResources {
@@ -63,7 +86,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
+	it.options.release = 17
 }
 
 java {
@@ -72,8 +95,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 jar {
