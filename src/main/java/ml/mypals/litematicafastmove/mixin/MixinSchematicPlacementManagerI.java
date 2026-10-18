@@ -21,16 +21,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 
 @Mixin(value = SchematicPlacementManager.class, remap = false)
 public abstract class MixinSchematicPlacementManagerI implements IFastMoveManager {
 
     @Shadow @Final protected Set<ChunkPos> chunksPreChange;
+    @Shadow @Final protected Set<ChunkPos> chunksToRebuild;
 
     @Shadow abstract void onPostPlacementChange(SchematicPlacement placement);
 
-    @Shadow public abstract void markChunkForRebuild(int cx, int cz);
+    @Shadow public abstract void markChunkForRebuild(ChunkPos pos);
 
     @Unique private PlacementSnapshot litematicafastmove$preChange;
     @Unique private boolean litematicafastmove$committing;
@@ -47,17 +49,18 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
 
         if (placement == null || this.litematicafastmove$committing) return;
 
-        // 失效旧访问器缓存，重新根据新原点计算相对坐标
+        // Invalidate the old accessor cache, relative coordinates are recomputed from the new origin
         PlacementAccessorRegistry.invalidate(placement);
 
         PendingMoveTracker.MoveState state = PendingMoveTracker.get(placement);
         boolean pureTranslation = pre != null && pre.isPureTranslationTo(placement);
 
-        // 纯平移的大型投影：独立网格只需改变换 (见 PlacementMeshManager)，什么都不用重建；
-        // WorldSchematic 的重写推迟到停止移动后一次性提交。
-        // 首次加载 (addSchematicPlacement) 不经过这里，开关/旋转/镜像/子区域编辑都走原版路径并重建独立网格。
+        // Pure translation of a large placement: the detached mesh only needs a new transform (see
+        // PlacementMeshManager), nothing is rebuilt; the WorldSchematic rewrite is postponed until movement stops.
+        // First load (addSchematicPlacement) does not pass through here; toggling, rotation, mirroring and sub-region
+        // edits take the vanilla path and rebuild the detached mesh.
         if (FastMoveConfig.isFastMoveEnabled() && pureTranslation && FastMoveConfig.shouldDeferCommit(placement)) {
-            // chunksPreChange 此刻 = 移动前占据的区块，即 WorldSchematic 中数据实际所在的区块
+            // chunksPreChange now = the chunks occupied before the move, i.e. where the WorldSchematic data really is
             PendingMoveTracker.onMoved(placement, pre.origin(), new HashSet<>(this.chunksPreChange));
             ci.cancel();
             return;
@@ -84,16 +87,11 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
     @Inject(method = "removeSchematicPlacement(Lfi/dy/masa/litematica/schematic/placement/SchematicPlacement;Z)Z", at = @At("HEAD"))
     private void onRemoveSchematicPlacement(SchematicPlacement placement, boolean update, CallbackInfoReturnable<Boolean> cir) {
         if (placement != null) {
-            // 先让区块索引回到当前原点，原版的移除逻辑才能卸载正确的区块
+            // Put the chunk index back at the current origin first, only then can the vanilla removal unload the right chunks
             this.litematicafastmove$commit(placement);
             PlacementAccessorRegistry.invalidate(placement);
             PlacementMeshManager.dispose(placement);
         }
-    }
-
-    @Inject(method = "onToggleMainRendering", at = @At("HEAD"))
-    private void onToggleMainRendering(boolean toggle, CallbackInfo ci) {
-        this.litematicafastmove$commitAll();
     }
 
     @Inject(method = "markAllPlacementsOfSchematicForRebuild", at = @At("HEAD"))
@@ -108,6 +106,25 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
         PlacementAccessorRegistry.clear();
         PlacementMeshManager.disposeAll();
         MoveInterpolator.clear();
+    }
+
+    /**
+     * Litematica 0.9.0 rebuilds the schematic chunks directly in processQueuedChunks and keeps a single set,
+     * chunksToRebuild, that serves as the rebuild queue, so that is where the frozen chunks are kept out while a move
+     * is pending. They are put back one by one when the move is committed.
+     */
+    @Inject(method = "processQueuedChunks", at = @At("HEAD"))
+    private void skipFrozenChunks(CallbackInfoReturnable<Boolean> cir) {
+        if (!PendingMoveTracker.hasAnyPending()) return;
+
+        Iterator<ChunkPos> iterator = this.chunksToRebuild.iterator();
+        while (iterator.hasNext()) {
+            ChunkPos pos = iterator.next();
+            if (PendingMoveTracker.isFrozenChunk(pos.x, pos.z)) {
+                iterator.remove();
+                PendingMoveTracker.markSkippedRebuild(pos.x, pos.z);
+            }
+        }
     }
 
     @Override
@@ -149,7 +166,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
     @Unique
     private void litematicafastmove$rebuildSkipped() {
         for (ChunkPos pos : PendingMoveTracker.drainUnfrozenSkipped()) {
-            this.markChunkForRebuild(pos.x(), pos.z());
+            this.markChunkForRebuild(pos);
         }
     }
 }

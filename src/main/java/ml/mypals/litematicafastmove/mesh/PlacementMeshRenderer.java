@@ -1,32 +1,27 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import com.llamalad7.mixinextras.sugar.ref.LocalIntRef;
-import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.config.Hotkeys;
-import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
+import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
 import ml.mypals.litematicafastmove.sync.MoveInterpolator;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.DynamicGpuData;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
-import org.joml.Vector4fc;
+import com.mojang.math.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,16 +29,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalDouble;
 import java.util.Set;
 
 public final class PlacementMeshRenderer {
-    private interface SectionVisitor {
-        void visit(PlacementMesh.GpuSection section, double ox, double oy, double oz);
-    }
-
-    private record TranslucentDraw(double distanceSq, PlacementMesh.GpuLayer layer, Vector3f offset) {}
+    private record DrawSection(PlacementMesh.GpuLayer layer, double x, double y, double z, double distanceSq) {}
 
     private static volatile Frustum frustum;
 
@@ -53,80 +42,97 @@ public final class PlacementMeshRenderer {
         frustum = value;
     }
 
-    public static boolean appendDraws(Map<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
-                                      List<DynamicGpuData.Transform> transforms,
-                                      Matrix4fc modelView, Vector4fc colorModulator, Matrix4fc textureMatrix,
-                                      double cameraX, double cameraY, double cameraZ,
-                                      LocalIntRef maxIndexCount) {
+    /**
+     * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
+     * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
+     */
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
         MeshUploader.processQueues();
-        if (PlacementMeshManager.meshes().isEmpty()) return false;
+        if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
 
-        boolean[] added = {false};
+        Vec3 cameraPos = camera.getPosition();
         TranslucentSorter sorter = TranslucentSorter.forFrame();
-        List<TranslucentDraw> translucentDraws = new ArrayList<>();
+        boolean translucent = layer == RenderType.translucent();
+        List<DrawSection> draws = new ArrayList<>();
 
-        forEachVisibleSection(cameraX, cameraY, cameraZ, true, (section, ox, oy, oz) -> {
-            Vector3f offset = new Vector3f((float) ox, (float) oy, (float) oz);
-
-            for (PlacementMesh.GpuLayer layer : section.layers()) {
-                if (layer.layer() == null || layer.vertexBuffer().isClosed()) continue;
-
-                if (layer.sort() != null) {
-                    sorter.maybeResort(layer, -ox, -oy, -oz);
-                    translucentDraws.add(new TranslucentDraw((ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8), layer, offset));
-                    continue;
+        forEachVisibleSection(cameraPos.x, cameraPos.y, cameraPos.z, true, (section, ox, oy, oz) -> {
+            for (PlacementMesh.GpuLayer gpuLayer : section.layers()) {
+                if (gpuLayer.layer() != layer) continue;
+                if (translucent && gpuLayer.sort() != null) {
+                    sorter.maybeResort(gpuLayer, -ox, -oy, -oz);
                 }
-
-                addDraw(renderMap, transforms, modelView, colorModulator, textureMatrix, maxIndexCount, layer, offset);
-                added[0] = true;
+                double dx = ox + 8.0, dy = oy + 8.0, dz = oz + 8.0;
+                draws.add(new DrawSection(gpuLayer, ox, oy, oz, dx * dx + dy * dy + dz * dz));
             }
         });
 
-        translucentDraws.sort(Comparator.comparingDouble(TranslucentDraw::distanceSq));//Sort transparent...
-        for (TranslucentDraw draw : translucentDraws) {
-            addDraw(renderMap, transforms, modelView, colorModulator, textureMatrix, maxIndexCount, draw.layer(), draw.offset());
-            added[0] = true;
+        if (draws.isEmpty()) return;
+
+        // Litematica draws translucent chunks back to front
+        draws.sort(translucent
+                ? Comparator.comparingDouble(DrawSection::distanceSq).reversed()
+                : Comparator.comparingDouble(DrawSection::distanceSq));
+
+        layer.setupRenderState();
+        ShaderInstance shader = RenderSystem.getShader();
+        BufferUploader.reset();
+
+        boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
+        if (renderAsTranslucent) {
+            float alpha = (float) Configs.Visuals.GHOST_BLOCK_ALPHA.getDoubleValue();
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
         }
 
-        return added[0];
-    }
+        // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        initShader(shader, matrices, projMatrix);
+        RenderSystem.setupShaderLights(shader);
+        shader.apply();
 
-    private static void addDraw(Map<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
-                                List<DynamicGpuData.Transform> transforms,
-                                Matrix4fc modelView, Vector4fc colorModulator, Matrix4fc textureMatrix,
-                                LocalIntRef maxIndexCount, PlacementMesh.GpuLayer layer, Vector3f offset) {
-        final int slot = transforms.size();
-        transforms.add(new DynamicGpuData.Transform(modelView, colorModulator, offset, textureMatrix));
-        renderMap.get(layer.layer()).add(new RenderPass.Draw<>(0, layer.vertexBuffer(), layer.indexBuffer(),
-        layer.indexType(), 0, layer.indexCount(), 0, (slices, uploader) -> uploader.setUniform("DynamicTransforms", slices[slot])));
+        Uniform chunkOffset = shader.CHUNK_OFFSET;
+        boolean startedDrawing = false;
 
-        if (layer.indexBuffer() == null && layer.indexCount() > maxIndexCount.get()) {
-            maxIndexCount.set(layer.indexCount());
+        for (DrawSection draw : draws) {
+            if (chunkOffset != null) {
+                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.upload();
+            }
+            VertexBuffer buffer = draw.layer().vertexBuffer();
+            buffer.bind();
+            buffer.draw();
+            VertexBuffer.unbind();
+            startedDrawing = true;
         }
+
+        if (renderAsTranslucent) {
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+        if (chunkOffset != null) {
+            chunkOffset.set(0.0f, 0.0f, 0.0f);
+        }
+
+        shader.clear();
+        if (startedDrawing) {
+            layer.format().clearBufferState();
+        }
+        VertexBuffer.unbind();
+        layer.clearRenderState();
     }
 
-    public static void drawOverlays(OverlayRenderType type, Camera camera) {
+    /** Draws the detached placements' overlays, after Litematica drew its own for the same overlay type. */
+    public static void drawOverlays(OverlayRenderType type, Camera camera, Matrix4f projMatrix) {
+        MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
+        MoveInterpolator.update();
 
-        Vec3 cameraPos = camera.position();
-        Matrix4f viewMatrix = RenderSystem.getModelViewMatrixCopy();
-        Vector4f colorModulator = new Vector4f(1f, 1f, 1f, 1f);
-        Matrix4f textureMatrix = new Matrix4f();
-        List<RenderPass.Draw<GpuBufferSlice[]>> draws = new ArrayList<>();
-        List<DynamicGpuData.Transform> transforms = new ArrayList<>();
-        int[] maxIndexCount = {0};
+        Vec3 cameraPos = camera.getPosition();
+        List<DrawSection> draws = new ArrayList<>();
 
         forEachVisibleSection(cameraPos.x, cameraPos.y, cameraPos.z, false, (section, ox, oy, oz) -> {
             for (PlacementMesh.GpuLayer layer : section.layers()) {
-                if (layer.overlay() != type || layer.indexCount() <= 0 || layer.vertexBuffer().isClosed()) continue;
-
-                final int slot = transforms.size();
-                Matrix4f modelView = new Matrix4f(viewMatrix).translate((float) ox, (float) oy, (float) oz);
-                transforms.add(new DynamicGpuData.Transform(modelView, colorModulator, new Vector3f(), textureMatrix));
-                draws.add(new RenderPass.Draw<>(0, layer.vertexBuffer(), null, null, 0, layer.indexCount(), 0,
-                        (slices, uploader) -> uploader.setUniform("DynamicTransforms", slices[slot])));
-                maxIndexCount[0] = Math.max(maxIndexCount[0], layer.indexCount());
+                if (layer.overlay() != type || layer.indexCount() <= 0) continue;
+                double dx = ox + 8.0, dy = oy + 8.0, dz = oz + 8.0;
+                draws.add(new DrawSection(layer, ox, oy, oz, dx * dx + dy * dy + dz * dz));
             }
         });
 
@@ -134,27 +140,55 @@ public final class PlacementMeshRenderer {
 
         boolean renderThrough = Configs.Visuals.SCHEMATIC_OVERLAY_RENDER_THROUGH.getBooleanValue() ||
                                 Hotkeys.RENDER_OVERLAY_THROUGH_BLOCKS.getKeybind().isKeybindHeld();
-        RenderPipeline pipeline = renderThrough ? type.renderThrough() : type.pipeline();
-        RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-        GpuTextureView colorTexture = target.getColorTextureView();
-        GpuTextureView depthTexture = target.getDepthTextureView();
-        RenderSystem.AutoStorageIndexBuffer autoStorageIndexBuffer = RenderSystem.getSequentialBuffer(type.topology());
-        GpuBufferSlice[] slices = RenderSystem.getDynamicUniforms().writeTransforms(transforms.toArray(new DynamicGpuData.Transform[0]));
 
-        assert colorTexture != null;
-        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "litematicafastmove:placement_overlay", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(pipeline));
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.drawMultipleIndexed(draws, autoStorageIndexBuffer.getBuffer(maxIndexCount[0]), autoStorageIndexBuffer.type(),
-                    List.of("DynamicTransforms"), slices);
+        RenderType renderLayer = RenderType.translucent();
+        renderLayer.setupRenderState();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        if (renderThrough) {
+            RenderSystem.disableDepthTest();
+        } else {
+            RenderSystem.enableDepthTest();
         }
+
+        ShaderInstance originalShader = RenderSystem.getShader();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        ShaderInstance shader = RenderSystem.getShader();
+        BufferUploader.reset();
+
+        for (DrawSection draw : draws) {
+            PoseStack matrices = new PoseStack();
+            matrices.translate(draw.x(), draw.y(), draw.z());
+            VertexBuffer buffer = draw.layer().vertexBuffer();
+            buffer.bind();
+            buffer.drawWithShader(matrices.last().pose(), projMatrix, shader);
+            VertexBuffer.unbind();
+        }
+
+        renderLayer.clearRenderState();
+        RenderSystem.setShader(() -> originalShader);
+        RenderSystem.disableBlend();
     }
 
-    private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds, SectionVisitor visitor) {
+    private static void initShader(ShaderInstance shader, PoseStack matrices, Matrix4f projMatrix) {
+        for (int i = 0; i < 12; ++i) {
+            shader.setSampler("Sampler" + i, RenderSystem.getShaderTexture(i));
+        }
+        if (shader.MODEL_VIEW_MATRIX != null) shader.MODEL_VIEW_MATRIX.set(matrices.last().pose());
+        if (shader.PROJECTION_MATRIX != null) shader.PROJECTION_MATRIX.set(projMatrix);
+        if (shader.COLOR_MODULATOR != null) shader.COLOR_MODULATOR.set(RenderSystem.getShaderColor());
+        if (shader.FOG_START != null) shader.FOG_START.set(RenderSystem.getShaderFogStart());
+        if (shader.FOG_END != null) shader.FOG_END.set(RenderSystem.getShaderFogEnd());
+        if (shader.FOG_COLOR != null) shader.FOG_COLOR.set(RenderSystem.getShaderFogColor());
+        if (shader.TEXTURE_MATRIX != null) shader.TEXTURE_MATRIX.set(RenderSystem.getTextureMatrix());
+        if (shader.GAME_TIME != null) shader.GAME_TIME.set(RenderSystem.getShaderGameTime());
+    }
+
+    private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds,
+                                              SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
         Frustum fr = frustum;
-        int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
+        int renderDistance = (Minecraft.getInstance().options.renderDistance + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : PlacementMeshManager.meshes().entrySet()) {
@@ -166,13 +200,6 @@ public final class PlacementMeshRenderer {
             Vec3 lag = MoveInterpolator.getLag(placement);
             PlacementBlockAccessor accessor = mesh.targetAccessor;
             boolean sameBuild = accessor != null && mesh.activeBuildOrigin.equals(mesh.targetBuildOrigin);
-
-            if (fr != null && sameBuild) {
-                AABB box = new AABB(
-                        accessor.minPos.getX() + delta.getX() + lag.x, accessor.minPos.getY() + delta.getY() + lag.y, accessor.minPos.getZ() + delta.getZ() + lag.z,
-                        accessor.maxPos.getX() + delta.getX() + lag.x + 1, accessor.maxPos.getY() + delta.getY() + lag.y + 1, accessor.maxPos.getZ() + delta.getZ() + lag.z + 1);
-                if (!fr.isVisible(box)) continue;
-            }
 
             boolean canRebuild = requestClipRebuilds && sameBuild && mesh.uploadingFull == null && PendingMoveTracker.get(placement) == null;
             Set<Long> clipKeys = null;
@@ -205,5 +232,9 @@ public final class PlacementMeshRenderer {
                 PlacementMeshManager.requestPartialBuild(placement, mesh, clipKeys);
             }
         }
+    }
+
+    private interface SectionVisitor {
+        void visit(PlacementMesh.GpuSection section, double ox, double oy, double oz);
     }
 }

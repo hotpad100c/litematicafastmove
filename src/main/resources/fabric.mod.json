@@ -27,9 +27,9 @@
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
-		"minecraft": "~26.3",
-		"java": ">=25",
-		"fabric-api": "*",
+		"minecraft": "~1.16.5",
+		"java": ">=16",
+		"fabric": "*",
 		"litematica": "*",
 		"emergency_exit": ">=0.1.0"
 	}

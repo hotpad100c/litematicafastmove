@@ -4,19 +4,24 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 
 
 public class ClientRegions {
 
     static boolean isEmpty(ClientLevel level, int x0, int y0, int z0, int x1, int y1, int z1) {
+        // 1.17 has no ChunkAccess#getSection(int)/getSectionsCount(); the section array is indexed from the bottom
+        // of the world instead.
+        int minSectionY = level.getMinBuildHeight() >> 4;
         for (int cx = x0 >> 4; cx <= x1 >> 4; cx++) {
             for (int cz = z0 >> 4; cz <= z1 >> 4; cz++) {
                 ChunkAccess chunk = level.getChunkSource().getChunk(cx, cz, false);
                 if (chunk == null) continue;
 
+                LevelChunkSection[] sections = chunk.getSections();
                 for (int sy = y0 >> 4; sy <= y1 >> 4; sy++) {
-                    int index = chunk.getSectionIndexFromSectionY(sy);
-                    if (index >= 0 && index < chunk.getSectionsCount() && !chunk.getSection(index).hasOnlyAir()) {
+                    int index = sy - minSectionY;
+                    if (index >= 0 && index < sections.length && !sections[index].isEmpty()) {
                         return false;
                     }
                 }
