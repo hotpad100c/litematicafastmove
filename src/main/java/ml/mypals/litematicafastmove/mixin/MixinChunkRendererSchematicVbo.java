@@ -9,6 +9,7 @@ import fi.dy.masa.litematica.render.schematic.ChunkRenderTaskSchematic;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager;
 import fi.dy.masa.malilib.util.IntBoundingBox;
+import fi.dy.masa.malilib.util.SubChunkPos;
 import ml.mypals.litematicafastmove.mesh.PlacementBlockEntities;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshManager;
 import ml.mypals.litematicafastmove.render.SchematicExit;
@@ -33,14 +34,16 @@ public abstract class MixinChunkRendererSchematicVbo {
 
     @Inject(method = "rebuildWorldView", at = @At("RETURN"))
     private void excludeTakenOverPlacements(CallbackInfo ci) {
-        int chunkX = this.position.getX() >> 4;
-        int chunkZ = this.position.getZ() >> 4;
+        // 0.11.7 fills the boxes from the sub-chunk (16^3) the renderer covers and exposes its placement parts per
+        // sub-chunk; 0.13.2 replaced that with a whole-chunk lookup. Same intent: drop the boxes of the placements
+        // whose mesh this mod draws detached.
+        SubChunkPos subChunk = new SubChunkPos(this.position.getX() >> 4, this.position.getY() >> 4, this.position.getZ() >> 4);
 
         synchronized (this.boxes) {
             this.boxes.clear();
-            for (SchematicPlacementManager.PlacementPart part : DataManager.getSchematicPlacementManager().getPlacementPartsInChunk(chunkX, chunkZ)) {
-                if (!PlacementMeshManager.isDetached(part.placement)) {
-                    this.boxes.add(part.bb);
+            for (SchematicPlacementManager.PlacementPart part : DataManager.getSchematicPlacementManager().getAllPlacementsTouchingSubChunk(subChunk)) {
+                if (!PlacementMeshManager.isDetached(part.getPlacement())) {
+                    this.boxes.add(part.getBox());
                 }
             }
         }

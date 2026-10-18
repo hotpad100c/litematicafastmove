@@ -31,14 +31,14 @@ final class PlacementMesh {
     }
 
     /**
-     * Built on a worker thread. The RenderedBuffer keeps its BufferBuilder alive, so the data can still be uploaded
-     * on the render thread later. hash: content hash of the vertex data, used to keep the old GPU buffer when a rebuild
-     * produced the same geometry.
+     * Built on a worker thread. On 1.18.2 the ended BufferBuilder <i>is</i> the buffer: it owns its ByteBuffer until
+     * VertexBuffer#upload pops it, so the data survives until the render thread uploads it. hash: content hash of the
+     * vertex data, used to keep the old GPU buffer when a rebuild produced the same geometry.
      */
-    record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder.RenderedBuffer buffer,
+    record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder buffer,
                     int indexCount, BufferBuilder.SortState sortState, int vertexBytes, long hash) {
         void free() {
-            this.buffer.release();
+            // 1.18.2 has no pooled buffer to hand back: the direct ByteBuffer dies with the builder
         }
     }
     // clientEmpty: the matching area of the real world (grown by one block) is all air

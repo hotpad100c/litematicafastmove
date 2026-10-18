@@ -13,6 +13,7 @@ import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
 import ml.mypals.litematicafastmove.config.ThreadPools;
+import ml.mypals.litematicafastmove.mixin.BufferBuilderAccessor;
 import ml.mypals.litematicafastmove.render.SchematicExit;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -279,31 +280,30 @@ public final class MeshSectionBuilder {
                     boolean isTranslucent = entry.getKey() == RenderType.translucent();
                     BufferBuilder.SortState sortState = null;
                     if (isTranslucent) {
-                        // 1.20 replaced the sort origin with a VertexSorting; on 1.19.3 the BufferBuilder sorts the
+                        // 1.20 replaced the sort origin with a VertexSorting; here the BufferBuilder still sorts the
                         // quads around setQuadSortOrigin, which is exactly what the vanilla chunk resort does.
                         builder.setQuadSortOrigin(cameraX, cameraY, cameraZ);
                         sortState = builder.getSortState();
                     }
-                    BufferBuilder.RenderedBuffer rendered = builder.end();
-                    if (rendered.isEmpty()) {
-                        rendered.release();
+                    builder.end();
+                    int indexCount = indexCount(builder);
+                    if (indexCount == 0) {
                         continue;
                     }
-                    ByteBuffer vertices = rendered.vertexBuffer();
-                    int vertexBytes = vertices == null ? 0 : vertices.remaining();
-                    layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, rendered,
-                            rendered.drawState().indexCount(), sortState, vertexBytes, hash(vertices)));
+                    int vertexBytes = bufferBytes(builder);
+                    layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, builder,
+                            indexCount, sortState, vertexBytes, contentHash(builder)));
                 }
                 for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
-                    BufferBuilder.RenderedBuffer rendered = entry.getValue().end();
-                    if (rendered.isEmpty()) {
-                        rendered.release();
+                    BufferBuilder builder = entry.getValue();
+                    builder.end();
+                    int indexCount = indexCount(builder);
+                    if (indexCount == 0) {
                         continue;
                     }
-                    ByteBuffer vertices = rendered.vertexBuffer();
-                    int vertexBytes = vertices == null ? 0 : vertices.remaining();
-                    layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), rendered,
-                            rendered.drawState().indexCount(), null, vertexBytes, hash(vertices)));
+                    int vertexBytes = bufferBytes(builder);
+                    layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), builder,
+                            indexCount, null, vertexBytes, contentHash(builder)));
                 }
 
                 // Section is only kept when there is something in it, or when a partial build must clear it
@@ -314,10 +314,37 @@ public final class MeshSectionBuilder {
                 }
             }
         } finally {
-            // nothing to close: every builder's data is owned by the RenderedBuffer we kept or released
+            // nothing to close: every builder's data is owned by the BufferBuilder we kept or dropped
         }
 
         return sections;
+    }
+
+    /** Number of indices the just-ended builder wrote (0 means it holds no geometry at all). */
+    private static int indexCount(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
+        return states.isEmpty() ? 0 : states.get(states.size() - 1).indexCount();
+    }
+
+    /** Bytes the upload of the just-ended builder will move (vertices plus indices). */
+    private static int bufferBytes(BufferBuilder builder) {
+        List<BufferBuilder.DrawState> states = ((BufferBuilderAccessor) builder).lfm$drawStates();
+        return states.isEmpty() ? 0 : states.get(states.size() - 1).bufferSize();
+    }
+
+    /**
+     * Content hash of the finished buffer. Unlike 1.19.3's RenderedBuffer there is no public handle on the data before
+     * the upload pops it, so the accessor mixin reads the builder's own ByteBuffer here on the builder thread.
+     */
+    private static long contentHash(BufferBuilder builder) {
+        BufferBuilderAccessor access = (BufferBuilderAccessor) builder;
+        int total = access.lfm$totalRenderedBytes();
+        ByteBuffer buffer = access.lfm$buffer();
+        if (total <= 0 || buffer == null) return 0L;
+        ByteBuffer bytes = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+        bytes.position(0);
+        bytes.limit(Math.min(total, bytes.capacity()));
+        return hash(bytes);
     }
 
     private static BufferBuilder newBuffer(VertexFormat.Mode mode, VertexFormat format, int capacity) {

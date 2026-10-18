@@ -36,7 +36,8 @@ public class TranslucentSorter {
             builder.begin(sort.mode, sort.format);
             builder.restoreSortState(sort.state);
             builder.setQuadSortOrigin((float) rx, (float) ry, (float) rz);
-            layer.vertexBuffer().upload(builder.end());
+            builder.end();
+            layer.vertexBuffer().upload(builder);
             sort.lastX = rx;
             sort.lastY = ry;
             sort.lastZ = rz;

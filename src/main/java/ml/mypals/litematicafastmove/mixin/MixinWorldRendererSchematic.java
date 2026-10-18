@@ -20,7 +20,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import com.mojang.math.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -44,12 +44,18 @@ public class MixinWorldRendererSchematic {
         return count[0];
     }
 
-    @WrapMethod(method = "renderBlockOverlay")
-    private void routeBlockOverlay(ChunkRendererSchematicVbo.OverlayRenderType type, PoseStack matrices, Camera camera,
-                                   Matrix4f projMatrix, Operation<Void> original) {
+    /**
+     * 0.13.2 made the per-type {@code renderBlockOverlay} protected and this mod wrapped that overload. In 0.11.7 it
+     * is private and the two passes are reached through the public {@code renderBlockOverlays}, so the detached
+     * overlays are drawn after Litematica's own two passes instead of interleaved per type — same order of drawing,
+     * one portal.
+     */
+    @WrapMethod(method = "renderBlockOverlays")
+    private void routeBlockOverlays(PoseStack matrices, Camera camera, Matrix4f projMatrix, Operation<Void> original) {
         SchematicExit.portal(() -> {
-            original.call(type, matrices, camera, projMatrix);
-            PlacementMeshRenderer.drawOverlays(type, camera, projMatrix);
+            original.call(matrices, camera, projMatrix);
+            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.OUTLINE, camera, projMatrix);
+            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.QUAD, camera, projMatrix);
         });
     }
 
