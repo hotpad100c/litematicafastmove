@@ -19,6 +19,19 @@ public final class MoveInterpolator {
             = new ConcurrentHashMap<>();
     private static long lastFrameNanos;
 
+    /** 上一次看到的原点与它变动的时间，用来算"安静了多久"。 */
+    private static final class Hold {
+        private BlockPos target;
+        private long movedAtMs;
+
+        Hold(BlockPos target, long movedAtMs) {
+            this.target = target;
+            this.movedAtMs = movedAtMs;
+        }
+    }
+
+    private static final Map<SchematicPlacement, Hold> HOLDS = new ConcurrentHashMap<>();
+
     public static void update() {
         long now = System.nanoTime();
         double dtMs = lastFrameNanos == 0 ? 0 : (now - lastFrameNanos) / 1.0E6;
@@ -27,8 +40,23 @@ public final class MoveInterpolator {
         double tau = FastMoveConfig.MOVE_SMOOTHING_MS.getDoubleValue();
         double alpha = tau <= 0 ? 1.0 : 1.0 - Math.exp(-Math.min(dtMs, 250.0) / tau);
 
+        long nowMs = System.currentTimeMillis();
+        int delayMs = FastMoveConfig.RENDER_DELAY_MS.getIntegerValue();
+
         DISPLAYED.forEach((placement, displayed) -> {
             BlockPos target = placement.getOrigin();
+
+            // 投影被移动后先不跟着走：等它安静够 renderDelay 毫秒再开始渲染到新位置。窗口内再次移动只会把
+            // 计时重置，于是那些中间位置一次都不会被画出来，重建/上传也就不用为它们做。
+            Hold hold = HOLDS.computeIfAbsent(placement, p -> new Hold(target, nowMs));
+            if (!target.equals(hold.target)) {
+                hold.target = target;
+                hold.movedAtMs = nowMs;
+            }
+            if (delayMs > 0 && nowMs - hold.movedAtMs < delayMs) {
+                return;
+            }
+
             double dx = target.getX() - displayed[0];
             double dy = target.getY() - displayed[1];
             double dz = target.getZ() - displayed[2];
@@ -90,10 +118,12 @@ public final class MoveInterpolator {
 
     public static void forget(SchematicPlacement placement) {
         DISPLAYED.remove(placement);
+        HOLDS.remove(placement);
     }
 
     public static void clear() {
         DISPLAYED.clear();
+        HOLDS.clear();
         laggingBoxes = List.of();
     }
 }
