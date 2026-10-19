@@ -2,8 +2,6 @@
 
 [中文](README.zh-CN.md)
 
-Download : [https://modsite-4x9.pages.dev/](https://modsite-4x9.pages.dev/mod?project=litematicafastmove)
-
 Make Litematica fly.
 
 Features:
