@@ -7,3 +7,6 @@
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf
 
+
+# Shell scripts are run by Git Bash too, which does not accept CRLF
+*.sh            text eol=lf
