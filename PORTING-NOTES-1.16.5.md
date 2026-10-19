@@ -138,6 +138,32 @@ Inherited from the newer branches, except where 1.16.5 changes the picture:
   upload budget is the only back-pressure on native buffer memory; 1.16.5 has no allocator to return freed
   buffers to.
 
+## Mixin injections that only fail at client start (found by the static audit)
+
+`./gradlew build` compiles the handlers but never checks that they fit the target method. Four `@WrapMethod`
+handlers had a wrong parameter list, so MixinExtras would have aborted the client as soon as one of those
+Litematica classes was transformed (`@WrapMethod ... doesn't have enough parameters!`):
+
+1. **`MixinLitematicaRenderer.routeOverlay`** - the target is `piecewiseRenderOverlay(PoseStack, Matrix4f)`,
+   the handler only declared `(PoseStack, Operation<Void>)`. The projection matrix is back in the signature
+   and in `original.call`.
+2. **`MixinRenderHandler.routeBoxes`** - the target is `onRenderWorldLast(PoseStack, Matrix4f)`, but the
+   handler started with a `float partialTicks` that this release's method does not have (and dropped the
+   `Matrix4f`). It is now `(PoseStack, Matrix4f, Operation<Void>)`, like the 1.17.1 branch.
+3. **`MixinWorldRendererSchematic.routeBlockLayer`** - the target is
+   `renderBlockLayer(RenderType, PoseStack, Camera, Matrix4f)`.
+4. **`MixinWorldRendererSchematic.routeBlockOverlays`** - the target is
+   `renderBlockOverlays(PoseStack, Camera, Matrix4f)`.
+
+`PlacementMeshRenderer.drawLayer`/`drawOverlays` build their own projection in this port (they take no
+`Matrix4f`), so only the `original.call(...)` argument list had to change.
+
+Everything else was verified mechanically, on the named development classpath (handler descriptors from
+`build/classes/java/main`, target descriptors from the Loom-remapped mod jars plus the named Minecraft jar),
+55 checks: 16 `@Inject`, 7 `@WrapMethod`, 7 `@WrapOperation`, 1 `@ModifyReturnValue` and 24 `@Shadow` members.
+The checker is `Y:/Temp/User/opencode/mixin-audit.py`, run as
+`python Y:/Temp/User/opencode/mixin-audit.py <worktree> <merged Minecraft jar>`.
+
 ## Not verified here
 
 `./gradlew build` is green. Mixin application and in-game behaviour still need a `runClient` smoke test. This

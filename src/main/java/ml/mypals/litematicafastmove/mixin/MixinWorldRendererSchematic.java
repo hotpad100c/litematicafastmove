@@ -20,6 +20,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
+import com.mojang.math.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -33,11 +34,11 @@ public class MixinWorldRendererSchematic {
      * EXIT portal, so both end up in the channel target.
      */
     @WrapMethod(method = "renderBlockLayer")
-    private int routeBlockLayer(RenderType layer, PoseStack matrices, Camera camera,
+    private int routeBlockLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
                                 Operation<Integer> original) {
         int[] count = {0};
         SchematicExit.portal(() -> {
-            count[0] = original.call(layer, matrices, camera);
+            count[0] = original.call(layer, matrices, camera, projMatrix);
             PlacementMeshRenderer.drawLayer(layer, matrices, camera);
         });
         return count[0];
@@ -50,9 +51,9 @@ public class MixinWorldRendererSchematic {
      * interleaved per type — same order of drawing, one portal.
      */
     @WrapMethod(method = "renderBlockOverlays")
-    private void routeBlockOverlays(PoseStack matrices, Camera camera, Operation<Void> original) {
+    private void routeBlockOverlays(PoseStack matrices, Camera camera, Matrix4f projMatrix, Operation<Void> original) {
         SchematicExit.portal(() -> {
-            original.call(matrices, camera);
+            original.call(matrices, camera, projMatrix);
             PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.OUTLINE, camera);
             PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.QUAD, camera);
         });
