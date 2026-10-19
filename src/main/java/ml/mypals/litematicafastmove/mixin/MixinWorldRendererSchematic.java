@@ -93,7 +93,7 @@ public class MixinWorldRendererSchematic {
     }
 
     @WrapOperation(method = "renderEntities", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/blockentity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
+            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/block/entity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
     private void shiftPendingBlockEntity(BlockEntityRenderDispatcher dispatcher, BlockEntity blockEntity, float partialTicks,
                                          PoseStack matrices, MultiBufferSource buffers, Operation<Void> original) {
         BlockPos pos = blockEntity.getBlockPos();

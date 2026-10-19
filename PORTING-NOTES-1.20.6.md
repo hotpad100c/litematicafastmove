@@ -89,6 +89,40 @@ async verifier) is unchanged apart from the API renames listed below.
 12. **Translucent resorting (Reimplemented).** `SortState#writeSortedIndexBuffer` does not exist in 1.20.6; the
     vanilla index-only re-upload pattern is used instead (see above).
 
+## Mixin injections that only fail at client start (found by the static audit)
+
+This branch was run in a client, but the run was only checked for "did the game start" - and it did start
+before it died. `Y:/Temp/User/opencode/lfm-1.20.6-client.log` ends with
+
+```
+Mixin apply for mod litematicafastmove failed ... MixinSchematicPlacementManagerI ... Invalid descriptor ...
+@Inject::skipFrozenChunks ... Expected (SchematicPlacement;CallbackInfo)V but found (Collection;CallbackInfo)V
+```
+
+`./gradlew build` compiles the handlers but never checks that they fit the target method, so two injections
+were broken - the same two the 1.21.4 and 1.21.1 branches carried, both inherited from this port:
+
+1. **`MixinSchematicPlacementManagerI.skipFrozenChunks` (Ambiguous target).** Litematica 0.18.3 has two
+   `markChunksForRebuild` overloads: `(SchematicPlacement)V` (public, only forwards to the other one) and
+   `(Collection<ChunkPos>)V` (the one every entry point funnels through, and the one the handler matches).
+   With a bare method name Mixin resolves the *name* first and then validates the handler against the first
+   overload, so it failed with `Expected (SchematicPlacement;CallbackInfo)V but found (Collection;CallbackInfo)V`.
+   The injection now pins the descriptor: `method = "markChunksForRebuild(Ljava/util/Collection;)V"`. The
+   descriptor only contains JDK types, so it is identical in development and production.
+2. **`MixinWorldRendererSchematic.shiftPendingBlockEntity` (Wrong class in the `@At` target).** The target
+   named `Lnet/minecraft/world/level/blockentity/BlockEntity;`, but `BlockEntity` lives in
+   `net/minecraft/world/level/block/entity/` - `blockentity` is the package of `BlockEntityRenderDispatcher`,
+   not of `BlockEntity`. The invoke could never match; it is now
+   `Lnet/minecraft/world/level/block/entity/BlockEntity;`. The built jar shows the defect plainly: the owner and
+   the other Minecraft types of that target string were remapped to intermediary, while
+   `net/minecraft/world/level/blockentity/BlockEntity` stayed named, because no such class exists.
+
+Everything else was verified mechanically, on the named development classpath (handler descriptors from
+`build/classes/java/main`, target descriptors from the Loom-remapped mod jars plus the named Minecraft jar),
+59 checks: 19 `@Inject`, 9 `@WrapMethod`, 7 `@WrapOperation`, 1 `@ModifyReturnValue` and 23 `@Shadow` members.
+The checker is `Y:/Temp/User/opencode/mixin-audit.py`, run as
+`python Y:/Temp/User/opencode/mixin-audit.py <worktree> <merged Minecraft jar>`.
+
 ## Assumptions / things to watch in the client run
 
 - `DetachedBlockView#getShade` delegates to the client level; 26.3 did not have to implement it.
