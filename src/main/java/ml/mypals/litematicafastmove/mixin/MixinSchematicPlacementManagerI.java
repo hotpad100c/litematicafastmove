@@ -113,7 +113,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
      * 原版重建会按当前原点往这些区块写入错位数据。所有来源 (区块加载、其他投影变更) 的重建
      * 都经过这两个方法，在这里统一推迟，提交时再补做。
      *
-     * This replaces the 26.3 {@code PlacementManagerTaskRebuild} mixin: 0.18.3 has no rebuild task class,
+     * This replaces the 26.3 {@code PlacementManagerTaskRebuild} mixin: 0.23.7 has no rebuild task class,
      * it queues chunk positions directly.
      */
     @Inject(method = "markChunkForRebuild", at = @At("HEAD"), cancellable = true)

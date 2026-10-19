@@ -45,7 +45,7 @@ public class TranslucentSorter {
         SORTER.submit(() -> {
             ByteBuffer indices = null;
             try (ByteBufferBuilder allocator = new ByteBufferBuilder(Math.max(size, 4))) {
-                // 1.21.11 的 SortState 自己开一条缓冲区写入排好序的索引
+                // 1.21.8 的 SortState 自己开一条缓冲区写入排好序的索引
                 try (ByteBufferBuilder.Result sorted = sort.state.buildSortedIndexBuffer(allocator,
                         VertexSorting.byDistance((float) rx, (float) ry, (float) rz))) {
                     ByteBuffer source = sorted.byteBuffer();

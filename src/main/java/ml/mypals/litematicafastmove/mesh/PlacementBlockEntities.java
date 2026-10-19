@@ -20,7 +20,7 @@ import java.util.Map;
 /**
  * 独立网格里的方块实体。
  *
- * 26.3 registered the detached block entity positions with Litematica's chunk renderer. 0.18.3's
+ * 26.3 registered the detached block entity positions with Litematica's chunk renderer. 0.23.7's
  * {@code ChunkRendererSchematicVbo#addBlockEntity} can only take a {@link BlockEntity} that already exists in the
  * schematic world at the very position it is drawn, which is not true while a move is still deferred (the
  * schematic data is still at the base origin). So the block entities of a detached placement are rendered here

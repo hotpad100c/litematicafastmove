@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MixinSchematicWorldRefresher {
 
     /**
-     * Litematica 0.18.3 has no {@code onToggleMainRendering} hook; toggling rendering (and every other
+     * Litematica 0.23.7 has no {@code onToggleMainRendering} hook; toggling rendering (and every other
      * full refresh) goes through here, so pending moves are committed first.
      */
     @Inject(method = "updateAll", at = @At("HEAD"))

@@ -299,7 +299,7 @@ final class OverlayMeshBuilder {
     }
 
     private static List<BlockModelPart> getModelParts(BlockState state) {
-        // 1.21.11 没有 Litematica 自己的模型缓存，直接从方块渲染管理器取模型
+        // 1.21.8 没有 Litematica 自己的模型缓存，直接从方块渲染管理器取模型
         BlockStateModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
         return model.collectParts(RANDOM.get());
     }

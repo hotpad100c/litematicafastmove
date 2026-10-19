@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.Mixin;
 @Mixin(value = RenderHandler.class, remap = false)
 public class MixinRenderHandler {
 
-    // 1.21.11 把 onRenderWorldLast 拆成了它加 "Advanced" 的那个版本
+    // 1.21.8 把 onRenderWorldLast 拆成了它加 "Advanced" 的那个版本
     @WrapMethod(method = "onRenderWorldLastAdvanced")
     private void routeBoxes(RenderTarget fb, Matrix4f posMatrix, Matrix4f projMatrix, Frustum frustum, Camera camera,
                             RenderBuffers buffers, ProfilerFiller profiler, Operation<Void> original) {
