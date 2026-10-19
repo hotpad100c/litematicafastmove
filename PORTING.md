@@ -10,9 +10,9 @@ already ported down to 1.16.5 (our fork `wwwzzzxxx/emergency-exit`, one `port/<m
 |---|---|---|---|---|---|
 | 26.3 | `master` = 0.1.0+26.3 | 0.162.0+26.3 | 25 | 0.29.1 | 0.30.2 |
 | 1.21.11 | `port/1.21.11` = 0.1.0+1.21.11 | 0.141.6+1.21.11 | 21 | 0.26.16 | 0.27.20 |
-| 1.21.8 | – (no EXIT branch yet) | 0.132.x+1.21.8 | 21 | 0.23.7 | 0.25.7 |
-| 1.21.4 | – | – | 21 | 0.21.7 | 0.23.5 |
-| 1.21.1 | – | – | 21 | 0.19.61 | 0.21.10 |
+| 1.21.8 | `port/1.21.8` = 0.1.0+1.21.8 | 0.132.x+1.21.8 | 21 | 0.23.7 | 0.25.7 |
+| 1.21.4 | `port/1.21.4` = 0.1.0+1.21.4 | – | 21 | 0.21.7 | 0.23.5 |
+| 1.21.1 | `port/1.21.1` = 0.1.0+1.21.1 | – | 21 | 0.19.61 | 0.21.10 |
 | 1.20.6 | `port/1.20.6` = 0.1.0+1.20.6 | 0.100.8+1.20.6 | 21 | 0.18.3 | 0.19.2 |
 | 1.20.4 | `port/1.20.4` = 0.1.0+1.20.4 | 0.97.3+1.20.4 | 17 | 0.17.4 | 0.18.3 |
 | 1.20.2 | `port/1.20.2` = 0.1.0+1.20.2 | 0.91.6+1.20.2 | 17 | 0.16.1 | 0.17.0 |
@@ -52,3 +52,49 @@ Work per version:
 - **Never kill a `gradlew` client task with a shell timeout**: a cancelled build leaves a heartbeat thread in the
   surviving daemon that keeps refreshing the lock, which wedges every later client run.
 - Say "starting a client, about N minutes" before any run, so whoever is at the machine can step away.
+
+## What a green build does not prove
+
+`./gradlew build` only says the code compiles. Mixin resolves a `method` name first and validates the handler afterwards,
+so a handler whose parameters do not match its target, or an `@At` string with the wrong package, fails **when a client
+loads the mod** - four real defects of that kind survived a green build (1.16.5, 1.20.6, 1.21.8, 1.21.11).
+
+Run the checker before any client run: `python Y:/Temp/User/opencode/mixin-audit.py <worktree> <worktree>` (its docstring
+lists what it compares). It now catches all of these, none of which a compiler sees:
+
+- a bare `method = "markChunksForRebuild"` with two overloads resolves to the wrong one - pin the descriptor;
+- package typos in `@At` targets (`level/blockentity/BlockEntity` vs `level/block/entity/BlockEntity`). Fingerprint: the
+  built jar then keeps a *named* Minecraft class among intermediary ones;
+- MixinExtras `@Local(name = ...)` types must match the target local **exactly** (`ArrayList`, not `List`; `Vector4f`,
+  not `Vector4fc`); an assignable supertype is rejected at apply time;
+- `@WrapMethod` handlers must declare **all** of the target's parameters - a missing `Matrix4f` is fatal;
+- the checker must pick the right jars: with two Loom caches in one worktree directory it silently compared against the
+  neighbouring version and "fixed" four handlers to the wrong API.
+
+Check the metadata every port copies from its neighbour too: `fabric.mod.json`'s `depends.minecraft` (1.21.1 asked for
+`~1.21.4`, so the loader refused the mod outright) and `gradle.properties`'s `version` (1.20.4/1.20.2 shipped `1.0.0`).
+
+Development-runtime dependencies can bite as well: on 1.20.1 Litematica/malilib metadata pulls LWJGL 3.3.2-snapshot while
+Sodium demands the 3.3.1 Minecraft ships, so the client dies in Sodium's own window before writing a log; that branch
+pins `org.lwjgl` to 3.3.1 in `build.gradle`.
+
+## What the mesh path is worth (measured on Minecraft 26.3, branch `bench/harness`)
+
+`./gradlew -Pjava_version=25 :runBenchClient -Dlitematicafastmove.bench.pattern=<hollow|solid|checker|noise>` builds a
+schematic of its own, places it through Litematica's API and measures both renderers in the same run. Numbers below are
+medians, 5-7 repeats, with `-Dlitematicafastmove.bench.extraRebuild=false` so neither arm does a superseded build:
+
+| pattern | exposed faces | our mesh | Litematica | ratio |
+|---|---|---|---|---|
+| hollow 64^3 | 47.6 k | 62.7 ms | 51.1 ms | 0.8 |
+| hollow 128x64x128 | 98 k | 141.1 ms | 175.2 ms | 1.2 |
+| checker 64^3, every face exposed | 786 k | 300.2 ms | 719.3 ms | **2.4** |
+
+The advantage is real but conditional: it grows with the number of exposed block faces (the async build and the batching
+pay off), while a small simple projection is slightly slower than Litematica's own path.
+
+`fastMoveRenderDelay` (ms, 0 disables) holds a moved placement where it was and only starts drawing it at the new place
+once it has been still for that long; moving it again inside the window restarts the wait, so the positions in between
+are never drawn. Over a scripted drag of 20 moves: distinct displayed positions 80 -> 1 for any delay >= 250 ms, and
+section rebuilds 196 -> 128 with the default commit delay. Note the division of labour: `fastMoveCommitDelay` is what
+suppresses rebuilds; the render delay suppresses drawing and saves some partial rebuilds on top of it.
