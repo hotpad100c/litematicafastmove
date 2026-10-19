@@ -1,8 +1,8 @@
 package ml.mypals.litematicafastmove.mesh;
 
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.device.GpuDevice;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -54,7 +54,6 @@ final class MeshUploader {
         }
 
         Budget budget = new Budget();
-        Set<Long> blockEntityChunks = new HashSet<>();
 
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : PlacementMeshManager.meshes().entrySet()) {
             if (!budget.hasRemaining()) break;
@@ -65,7 +64,7 @@ final class MeshUploader {
             if (full != null) {
                 upload(mesh, full, budget);
                 if (!full.isFullyUploaded()) continue;
-                activateFull(placement, mesh, full, blockEntityChunks);
+                activateFull(placement, mesh, full);
                 MeshDebugGizmos.fullBuild(mesh.targetAccessor, placement.getOrigin().subtract(full.buildOrigin), true);
             }
 
@@ -74,13 +73,12 @@ final class MeshUploader {
                 upload(mesh, partial, budget);
                 if (!partial.isFullyUploaded()) break;
                 mesh.uploadingPartials.poll();
-                PlacementBlockEntities.update(placement, mesh, partial, blockEntityChunks);
+                PlacementBlockEntities.update(placement, mesh, partial);
                 MeshDebugGizmos.sectionsApplied(mesh.targetAccessor, partial.keys, placement.getOrigin().subtract(partial.buildOrigin));
                 applyPartial(mesh, partial);
             }
         }
 
-        PlacementBlockEntities.scheduleLitematicaChunks(blockEntityChunks);
         TranslucentSorter.applyResorted();
     }
 
@@ -99,8 +97,7 @@ final class MeshUploader {
         }
     }
 
-    private static void activateFull(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full,
-                                     Set<Long> blockEntityChunks) {
+    private static void activateFull(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full) {
         LitematicaFastMove.LOGGER.debug("Detached placement mesh ready: {} sections (generation {})",
                 full.uploaded.size(), full.generation);
         mesh.active.values().forEach(section -> section.closeExcept(full.borrowed));
@@ -113,7 +110,7 @@ final class MeshUploader {
         mesh.activeGeneration = full.generation;
         mesh.activeBuildOrigin = full.buildOrigin;
         mesh.uploadingFull = null;
-        PlacementBlockEntities.replace(placement, mesh, full, blockEntityChunks);
+        PlacementBlockEntities.replace(placement, mesh, full);
 
         mesh.uploadingPartials.forEach(PlacementMesh.BuiltPlacementBuffer::discard);
         mesh.uploadingPartials.clear();

@@ -2,10 +2,9 @@ package ml.mypals.litematicafastmove.mesh;
 
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.CardinalLighting;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -13,7 +12,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
-import org.jspecify.annotations.NonNull;
 
 
 final class DetachedBlockView implements BlockAndTintGetter {
@@ -80,7 +78,7 @@ final class DetachedBlockView implements BlockAndTintGetter {
     }
 
     @Override
-    public @NonNull BlockState getBlockState(BlockPos pos) {
+    public BlockState getBlockState(BlockPos pos) {
         int dx = pos.getX() - this.baseX;
         int dy = pos.getY() - this.baseY;
         int dz = pos.getZ() - this.baseZ;
@@ -93,27 +91,27 @@ final class DetachedBlockView implements BlockAndTintGetter {
     }
 
     @Override
-    public @NonNull FluidState getFluidState(@NonNull BlockPos pos) {
+    public FluidState getFluidState(BlockPos pos) {
         return this.getBlockState(pos).getFluidState();
     }
 
     @Override
-    public BlockEntity getBlockEntity(@NonNull BlockPos pos) {
+    public BlockEntity getBlockEntity(BlockPos pos) {
         return null;
     }
 
     @Override
-    public @NonNull LevelLightEngine getLightEngine() {
+    public LevelLightEngine getLightEngine() {
         return this.lightWorld.getLightEngine();
     }
 
     @Override
-    public @NonNull CardinalLighting cardinalLighting() {
-        return this.clientLevel.cardinalLighting();
+    public float getShade(Direction direction, boolean shade) {
+        return this.clientLevel.getShade(direction, shade);
     }
 
     @Override
-    public int getBlockTint(@NonNull BlockPos pos, @NonNull ColorResolver colorResolver) {
+    public int getBlockTint(BlockPos pos, ColorResolver colorResolver) {
         return this.clientLevel.getBlockTint(pos, colorResolver);
     }
 

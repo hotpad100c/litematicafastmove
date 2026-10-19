@@ -12,8 +12,8 @@ import fi.dy.masa.litematica.util.IgnoreBlockRegistry;
 import fi.dy.masa.litematica.util.ItemUtils;
 import fi.dy.masa.litematica.util.WorldUtils;
 import fi.dy.masa.litematica.world.WorldSchematic;
-import fi.dy.masa.malilib.util.position.IntBoundingBox;
-import fi.dy.masa.malilib.util.position.LayerRange;
+import fi.dy.masa.malilib.util.IntBoundingBox;
+import fi.dy.masa.malilib.util.LayerRange;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -113,29 +113,29 @@ public abstract class MixinSchematicVerifier extends TaskBase {
 
         for (ChunkPos pos : this.requiredChunks) {
             if (session.isSubmitted(pos)) continue;
-            if (!WorldUtils.isClientChunkLoaded(this.worldClient, pos.x(), pos.z())) continue;
+            if (!WorldUtils.isClientChunkLoaded(this.worldClient, pos.x, pos.z)) continue;
 
             List<IntBoundingBox> boxes = new ArrayList<>();
-            for (IntBoundingBox box : this.schematicPlacement.getBoxesWithinChunk(pos.x(), pos.z()).values()) {
+            for (IntBoundingBox box : this.schematicPlacement.getBoxesWithinChunk(pos.x, pos.z).values()) {
                 IntBoundingBox clamped = ranged ? litematicafastmove$clamp(box, range) : box;
                 if (clamped != null) boxes.add(clamped);
             }
 
-            session.submit(pos, this.worldClient.getChunk(pos.x(), pos.z()), boxes);
+            session.submit(pos, this.worldClient.getChunk(pos.x, pos.z), boxes);
         }
     }
 
     @Unique
     private static IntBoundingBox litematicafastmove$clamp(IntBoundingBox box, LayerRange range) {
         Direction.Axis axis = range.getAxis();
-        int min = range.getMinLayerBoundary();
-        int max = range.getMaxLayerBoundary();
-        int minX = axis == Direction.Axis.X ? Math.max(box.minX(), min) : box.minX();
-        int minY = axis == Direction.Axis.Y ? Math.max(box.minY(), min) : box.minY();
-        int minZ = axis == Direction.Axis.Z ? Math.max(box.minZ(), min) : box.minZ();
-        int maxX = axis == Direction.Axis.X ? Math.min(box.maxX(), max) : box.maxX();
-        int maxY = axis == Direction.Axis.Y ? Math.min(box.maxY(), max) : box.maxY();
-        int maxZ = axis == Direction.Axis.Z ? Math.min(box.maxZ(), max) : box.maxZ();
+        int min = range.getLayerMin();
+        int max = range.getLayerMax();
+        int minX = axis == Direction.Axis.X ? Math.max(box.minX, min) : box.minX;
+        int minY = axis == Direction.Axis.Y ? Math.max(box.minY, min) : box.minY;
+        int minZ = axis == Direction.Axis.Z ? Math.max(box.minZ, min) : box.minZ;
+        int maxX = axis == Direction.Axis.X ? Math.min(box.maxX, max) : box.maxX;
+        int maxY = axis == Direction.Axis.Y ? Math.min(box.maxY, max) : box.maxY;
+        int maxZ = axis == Direction.Axis.Z ? Math.min(box.maxZ, max) : box.maxZ;
         if (minX > maxX || minY > maxY || minZ > maxZ) return null;
         return new IntBoundingBox(minX, minY, minZ, maxX, maxY, maxZ);
     }
@@ -174,7 +174,7 @@ public abstract class MixinSchematicVerifier extends TaskBase {
                     for (BlockPos pos : group.positions()) {
                         this.blockMismatches.put(pos, group.mismatch());
                     }
-                    ItemUtils.setItemForBlock(this.worldClient, itemPos, group.mismatch().stateFound());
+                    ItemUtils.setItemForBlock(this.worldClient, itemPos, group.mismatch().stateFound);
                 }
             }
 

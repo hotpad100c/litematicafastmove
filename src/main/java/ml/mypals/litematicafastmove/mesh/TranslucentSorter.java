@@ -1,6 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -42,13 +43,19 @@ public class TranslucentSorter {
         sort.pending = true;
         int size = layer.indexCount() * layer.indexType().bytes;
         SORTER.submit(() -> {
-            ByteBuffer indices = MemoryUtil.memAlloc(size);
-            try {
-                sort.state.writeSortedIndexBuffer(indices, VertexSorting.byDistance((float) rx, (float) ry, (float) rz));
-                indices.position(0).limit(size);
+            ByteBuffer indices = null;
+            try (ByteBufferBuilder allocator = new ByteBufferBuilder(Math.max(size, 4))) {
+                // 1.21.11 的 SortState 自己开一条缓冲区写入排好序的索引
+                try (ByteBufferBuilder.Result sorted = sort.state.buildSortedIndexBuffer(allocator,
+                        VertexSorting.byDistance((float) rx, (float) ry, (float) rz))) {
+                    ByteBuffer source = sorted.byteBuffer();
+                    indices = MemoryUtil.memAlloc(source.remaining());
+                    indices.put(source.duplicate());
+                    indices.flip();
+                }
                 RESORTED.add(new Resorted(layer, indices, rx, ry, rz));
             } catch (Throwable e) {
-                MemoryUtil.memFree(indices);
+                if (indices != null) MemoryUtil.memFree(indices);
                 LitematicaFastMove.LOGGER.debug("Failed to resort translucent section", e);
             }
         });

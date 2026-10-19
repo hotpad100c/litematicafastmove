@@ -1,61 +1,97 @@
 package ml.mypals.litematicafastmove.mesh;
 
-import fi.dy.masa.litematica.render.IWorldSchematicRenderer;
-import fi.dy.masa.litematica.render.LitematicaRenderer;
+import com.mojang.blaze3d.vertex.PoseStack;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
-import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
+import fi.dy.masa.litematica.world.SchematicWorldHandler;
+import fi.dy.masa.litematica.world.WorldSchematic;
+import ml.mypals.litematicafastmove.sync.MoveInterpolator;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.LongConsumer;
 
-
+/**
+ * 独立网格里的方块实体。
+ *
+ * 26.3 registered the detached block entity positions with Litematica's chunk renderer. 0.18.3's
+ * {@code ChunkRendererSchematicVbo#addBlockEntity} can only take a {@link BlockEntity} that already exists in the
+ * schematic world at the very position it is drawn, which is not true while a move is still deferred (the
+ * schematic data is still at the base origin). So the block entities of a detached placement are rendered here
+ * instead, with the same origin/lag translation as the block mesh.
+ */
 public class PlacementBlockEntities {
-    public static void forEachInChunk(int chunkX, int chunkZ, LongConsumer consumer) {
+
+    /**
+     * {@code PlacementMeshManager#meshes()} 是包内可见的，调用方（mixin 在别的包里）用这个判断
+     * 有没有需要自绘的方块实体，免得白开一次 EXIT 传送门。
+     */
+    public static boolean hasAny() {
+        return !PlacementMeshManager.meshes().isEmpty();
+    }
+
+    /**
+     * 在 EXIT 的 portal 内、Litematica 自己的方块实体之后调用。
+     */
+    public static void renderDetached(Camera camera, float partialTicks, PoseStack matrices, MultiBufferSource buffers) {
+        if (PlacementMeshManager.meshes().isEmpty()) return;
+
+        WorldSchematic world = SchematicWorldHandler.getSchematicWorld();
+        if (world == null) return;
+
+        Vec3 cameraPos = camera.getPosition();
+        BlockEntityRenderDispatcher dispatcher = Minecraft.getInstance().getBlockEntityRenderDispatcher();
+
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : PlacementMeshManager.meshes().entrySet()) {
             SchematicPlacement placement = entry.getKey();
             PlacementMesh mesh = entry.getValue();
             BlockPos buildOrigin = mesh.blockEntityBuildOrigin;
             if (buildOrigin == null || mesh.blockEntities.isEmpty() || !placement.isRenderingEnabled()) continue;
 
-            BlockPos offset = origin(placement).subtract(buildOrigin);
+            Vec3 lag = MoveInterpolator.getLag(placement);
+            // The schematic world still holds this placement's data at the build origin until the move is
+            // committed, so translate from the build origin to the current (displayed) origin, plus the
+            // interpolation lag — exactly what the block mesh does.
+            BlockPos delta = placement.getOrigin().subtract(buildOrigin);
+
             for (long[] positions : mesh.blockEntities.values()) {
                 for (long packed : positions) {
-                    int x = BlockPos.getX(packed) + offset.getX();
-                    int z = BlockPos.getZ(packed) + offset.getZ();
-                    if ((x >> 4) == chunkX && (z >> 4) == chunkZ) {
-                        consumer.accept(BlockPos.asLong(x, BlockPos.getY(packed) + offset.getY(), z));
+                    BlockPos buildPos = BlockPos.of(packed);
+                    BlockEntity blockEntity = world.getBlockEntity(buildPos);
+                    if (blockEntity == null) continue;
+
+                    matrices.pushPose();
+                    try {
+                        matrices.translate(
+                                buildPos.getX() + delta.getX() + lag.x - cameraPos.x,
+                                buildPos.getY() + delta.getY() + lag.y - cameraPos.y,
+                                buildPos.getZ() + delta.getZ() + lag.z - cameraPos.z);
+                        dispatcher.render(blockEntity, partialTicks, matrices, buffers);
+                    } finally {
+                        matrices.popPose();
                     }
                 }
             }
         }
     }
 
-    static void replace(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full, Set<Long> changedChunks) {
-        BlockPos origin = origin(placement);
-        BlockPos oldBuildOrigin = mesh.blockEntityBuildOrigin;
-        if (oldBuildOrigin != null) {
-            BlockPos oldOffset = origin.subtract(oldBuildOrigin);
-            mesh.blockEntities.values().forEach(positions -> addChunksOf(positions, oldOffset, changedChunks));
-        }
-
+    static void replace(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer full) {
         mesh.blockEntities.clear();
         mesh.blockEntityBuildOrigin = full.buildOrigin;
-        BlockPos offset = origin.subtract(full.buildOrigin);
         for (PlacementMesh.GpuSection section : full.uploaded) {
             if (section.blockEntities().length > 0) {
                 mesh.blockEntities.put(section.key(), section.blockEntities());
-                addChunksOf(section.blockEntities(), offset, changedChunks);
             }
         }
     }
 
-    static void update(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer partial, Set<Long> changedChunks) {
-        BlockPos offset = origin(placement).subtract(partial.buildOrigin);
+    static void update(SchematicPlacement placement, PlacementMesh mesh, PlacementMesh.BuiltPlacementBuffer partial) {
         Map<Long, long[]> updated = new HashMap<>();
         for (PlacementMesh.GpuSection section : partial.uploaded) {
             updated.put(section.key(), section.blockEntities());
@@ -67,34 +103,11 @@ public class PlacementBlockEntities {
             if (after != null && after.length == 0) after = null;
             if (Arrays.equals(before, after)) continue;
 
-            addChunksOf(before, offset, changedChunks);
-            addChunksOf(after, offset, changedChunks);
             if (after != null) {
                 mesh.blockEntities.put(key, after);
             } else {
                 mesh.blockEntities.remove(key);
             }
-        }
-    }
-
-    static void scheduleLitematicaChunks(Set<Long> chunks) {
-        if (chunks.isEmpty()) return;
-
-        IWorldSchematicRenderer renderer = LitematicaRenderer.getInstance().getWorldRenderer();
-        for (long packed : chunks) {
-            renderer.scheduleChunkRenders(ChunkPos.getX(packed), ChunkPos.getZ(packed), false);
-        }
-    }
-
-    private static BlockPos origin(SchematicPlacement placement) {
-        PendingMoveTracker.MoveState pending = PendingMoveTracker.get(placement);
-        return pending != null ? pending.baseOrigin : placement.getOrigin();
-    }
-
-    private static void addChunksOf(long[] positions, BlockPos offset, Set<Long> out) {
-        if (positions == null) return;
-        for (long packed : positions) {
-            out.add(ChunkPos.pack((BlockPos.getX(packed) + offset.getX()) >> 4, (BlockPos.getZ(packed) + offset.getZ()) >> 4));
         }
     }
 }

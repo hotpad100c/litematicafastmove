@@ -5,7 +5,7 @@ import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.schematic.verifier.SchematicVerifier.BlockMismatch;
 import fi.dy.masa.litematica.schematic.verifier.SchematicVerifier.MismatchType;
 import fi.dy.masa.litematica.util.IgnoreBlockRegistry;
-import fi.dy.masa.malilib.util.position.IntBoundingBox;
+import fi.dy.masa.malilib.util.IntBoundingBox;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
@@ -56,7 +56,7 @@ public final class AsyncSchematicVerifier {
                               Set<BlockState> schematicMismatchStates) {}
 
     // 判定规则所需的配置与忽略列表，在主线程拷贝快照供工作线程读取
-    private record Rules(boolean ignoreCropAge, boolean ignoreExistingFluids, boolean differentBlocks,
+    private record Rules(boolean ignoreExistingFluids, boolean differentBlocks,
                          IgnoreBlockRegistry ignoreBlockRegistry, Set<Pair<BlockState, BlockState>> ignoredMismatches) {}
 
     public static final class Session {
@@ -72,7 +72,6 @@ public final class AsyncSchematicVerifier {
             this.placement = placement;
             this.accessor = new PlacementBlockAccessor(placement);
             this.rules = new Rules(
-                    Configs.Visuals.IGNORE_CROP_AGE.getBooleanValue(),
                     Configs.Visuals.IGNORE_EXISTING_FLUIDS.getBooleanValue(),
                     Configs.Generic.ENABLE_DIFFERENT_BLOCKS.getBooleanValue(),
                     ignoreBlockRegistry != null ? ignoreBlockRegistry : new IgnoreBlockRegistry(),
@@ -122,9 +121,9 @@ public final class AsyncSchematicVerifier {
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (IntBoundingBox box : boxes) {
-            for (int y = box.minY(); y <= box.maxY(); ++y) {
-                for (int z = box.minZ(); z <= box.maxZ(); ++z) {
-                    for (int x = box.minX(); x <= box.maxX(); ++x) {
+            for (int y = box.minY; y <= box.maxY; ++y) {
+                for (int z = box.minZ; z <= box.maxZ; ++z) {
+                    for (int x = box.minX; x <= box.maxX; ++x) {
                         BlockState stateSchematic = accessor.getBlockStateAt(x, y, z);
                         BlockState stateClient = clientChunk.getBlockState(mutable.set(x, y, z));
                         boolean schematicAir = stateSchematic.isAir();
@@ -134,8 +133,7 @@ public final class AsyncSchematicVerifier {
                         if (!clientAir) clientBlocks++;
 
                         boolean differs = stateClient != stateSchematic && (!clientAir || !schematicAir);
-                        if (!differs || (rules.ignoreCropAge() &&
-                                         fi.dy.masa.litematica.util.BlockUtils.areStatesEqualIgnoringAge(stateSchematic, stateClient))) {
+                        if (!differs) {
                             correct.addTo(stateClient, 1);
                             if (!schematicAir) correctNonAir++;
                             continue;

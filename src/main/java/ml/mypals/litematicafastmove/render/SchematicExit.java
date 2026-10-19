@@ -7,8 +7,8 @@ import ml.mypals.exit.api.ExitChannel;
 import ml.mypals.exit.api.ExitOptions;
 import ml.mypals.litematicafastmove.mesh.MeshDebugGizmos;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.resources.Identifier;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.resources.ResourceLocation;
 
 import static ml.mypals.litematicafastmove.LitematicaFastMove.MOD_ID;
 
@@ -21,7 +21,7 @@ public final class SchematicExit {
 
     private static ExitChannel channel() {
         if (channel == null) {
-            channel = Exit.channel(Identifier.fromNamespaceAndPath(MOD_ID, "schematic"), ExitOptions.builder()
+            channel = Exit.channel(ResourceLocation.fromNamespaceAndPath(MOD_ID, "schematic"), ExitOptions.builder()
                     .wantsFrame(() -> Configs.Visuals.ENABLE_RENDERING.getBooleanValue() || MeshDebugGizmos.isEnabled())
                     .build());
         }
@@ -45,7 +45,11 @@ public final class SchematicExit {
         return ENABLED && Exit.isRouting() ? Exit.redirect(original) : original;
     }
 
-    public static SubmitNodeCollector batch(SubmitNodeCollector original) {
+    /**
+     * 1.21.8 画方块实体走 {@link MultiBufferSource}（还没有 submit node collector），
+     * 交给通道的 batch 统一在关卡渲染末尾画。
+     */
+    public static MultiBufferSource batch(MultiBufferSource original) {
         return ENABLED ? channel().batch(original) : original;
     }
 
