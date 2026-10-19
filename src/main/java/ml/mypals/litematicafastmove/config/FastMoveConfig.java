@@ -32,7 +32,7 @@ public class FastMoveConfig {
     public static final ConfigInteger COMMIT_DELAY_MS = new ConfigInteger("fastMoveCommitDelay", 1500, 0, 60_000, "");
     // After a move the placement keeps being drawn at its old position for this long; moving again restarts the wait,
     // so intermediate positions are never rendered
-    public static final ConfigInteger RENDER_DELAY_MS = new ConfigInteger("fastMoveRenderDelay", 250, 0, 60_000, "");
+    public static final ConfigInteger RENDER_DELAY_MS = new ConfigInteger("fastMoveRenderDelay", 0, 0, 60_000, "");
     public static final ConfigDouble MOVE_SMOOTHING_MS = new ConfigDouble("fastMoveSmoothing", 60, 0, 1000, "");
     public static final ConfigDouble MOVE_SNAP_DISTANCE = new ConfigDouble("fastMoveSnapDistance", 128, 0, 30_000_000, "");
 
