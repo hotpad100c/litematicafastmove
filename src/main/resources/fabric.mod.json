@@ -26,9 +26,9 @@
 		"litematicafastmove.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.19.5",
-		"minecraft": "~26.3",
-		"java": ">=25",
+		"fabricloader": ">=0.16.8",
+		"minecraft": "~1.21.8",
+		"java": ">=21",
 		"fabric-api": "*",
 		"litematica": "*",
 		"emergency_exit": ">=0.1.0"
