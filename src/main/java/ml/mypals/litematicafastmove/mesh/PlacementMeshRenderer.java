@@ -98,9 +98,12 @@ public final class PlacementMeshRenderer {
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
+            // 1.17.1/1.18.2: VertexBuffer#bind only binds the GL buffers; the VAO and the vertex format state are
+            // bound by drawChunkLayer. Calling draw() here draws with no array object bound, so every call is an
+            // invalid operation and the section renders as nothing. Litematica's own WorldRendererSchematic uses
+            // exactly this pair for its chunk buffers.
             buffer.bind();
-            buffer.draw();
-            VertexBuffer.unbind();
+            buffer.drawChunkLayer();
             startedDrawing = true;
         }
 
@@ -116,6 +119,7 @@ public final class PlacementMeshRenderer {
             layer.format().clearBufferState();
         }
         VertexBuffer.unbind();
+        VertexBuffer.unbindVertexArray();
         layer.clearRenderState();
     }
 
