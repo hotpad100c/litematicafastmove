@@ -50,5 +50,8 @@
   "litematicafastmove.config.comment.fastMoveDebugGizmoDuration": "How long each debug box stays visible while fading out.",
   "litematicafastmove.config.name.fastMoveBuildBatchSections": "fastMoveBuildBatchSections",
   "litematicafastmove.config.prettyName.fastMoveBuildBatchSections": "Fast Move: Build Batch Size (sections)",
-  "litematicafastmove.config.comment.fastMoveBuildBatchSections": "Mesh builds are split into batches of this many 16x16x16 sections, nearest to the camera first, and spread over all builder threads.\nSmaller batches show results sooner; rebuilt sections appear batch by batch."
+  "litematicafastmove.config.comment.fastMoveBuildBatchSections": "Mesh builds are split into batches of this many 16x16x16 sections, nearest to the camera first, and spread over all builder threads.\nSmaller batches show results sooner; rebuilt sections appear batch by batch.",
+  "litematicafastmove.config.name.fastMoveRenderDelay": "fastMoveRenderDelay",
+  "litematicafastmove.config.prettyName.fastMoveRenderDelay": "Fast Move: Render Delay (ms)",
+  "litematicafastmove.config.comment.fastMoveRenderDelay": "After a placement is moved, wait this long before drawing it at the new position. Moving it again within that window restarts the wait, so the intermediate positions are never rendered and their rebuilds are skipped."
 }

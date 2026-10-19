@@ -27,6 +27,8 @@ public class FastMoveConfig {
     public static final ConfigInteger DETACHED_VOLUME_THRESHOLD = new ConfigInteger("fastMoveLargePlacementVolume", 32 * 32 * 32, 1, Integer.MAX_VALUE, "").apply(KEY);
     public static final ConfigBoolean ENABLE_ASYNC_VERIFY = new ConfigBoolean("fastMoveAsyncVerifier", true, "").apply(KEY);
     public static final ConfigInteger COMMIT_DELAY_MS = new ConfigInteger("fastMoveCommitDelay", 1500, 0, 60_000, "").apply(KEY);
+    // 移动后先按原位显示这么久；窗口内再次移动会重新计时，因此中间位置不会被渲染
+    public static final ConfigInteger RENDER_DELAY_MS = new ConfigInteger("fastMoveRenderDelay", 250, 0, 60_000, "").apply(KEY);
     public static final ConfigDouble MOVE_SMOOTHING_MS = new ConfigDouble("fastMoveSmoothing", 60, 0, 1000, "").apply(KEY);
     public static final ConfigDouble MOVE_SNAP_DISTANCE = new ConfigDouble("fastMoveSnapDistance", 128, 0, 30_000_000, "").apply(KEY);
 
@@ -56,6 +58,7 @@ public class FastMoveConfig {
             DETACHED_VOLUME_THRESHOLD,
             ENABLE_ASYNC_VERIFY,
             COMMIT_DELAY_MS,
+            RENDER_DELAY_MS,
             MOVE_SMOOTHING_MS,
             MOVE_SNAP_DISTANCE,
             UPLOAD_KB_PER_FRAME,

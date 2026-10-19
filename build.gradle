@@ -40,8 +40,9 @@ dependencies {
 	implementation "maven.modrinth:malilib:0.30.2"
 
 	// EXIT routes the schematic rendering past shader packs. Nested, so players do not install it separately.
-	implementation("ml.mypals.exit:emergency_exit:${project.exit_version}") { transitive = false }
-	include("ml.mypals.exit:emergency_exit:${project.exit_version}")
+	// The Fabric jar carries the whole library (its own classes and the common ones), so the one artifact is enough.
+	implementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
+	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
 
 	// Iris and Sodium for the development runs only, the same versions EXIT is built against.
 	localRuntime "maven.modrinth:YL57xq9U:${project.iris_version}"

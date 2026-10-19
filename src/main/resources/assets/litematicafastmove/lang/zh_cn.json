@@ -50,5 +50,8 @@
   "litematicafastmove.config.comment.fastMoveDebugGizmoDuration": "每个调试框显示并淡出的时长。",
   "litematicafastmove.config.name.fastMoveBuildBatchSections": "fastMoveBuildBatchSections",
   "litematicafastmove.config.prettyName.fastMoveBuildBatchSections": "Fast Move：构建批次大小（区段）",
-  "litematicafastmove.config.comment.fastMoveBuildBatchSections": "网格构建按此数量的 16x16x16 区段分批，离相机近的先构建，并分散到所有构建线程。\n批次越小结果出现越早；局部重建会逐批生效。"
+  "litematicafastmove.config.comment.fastMoveBuildBatchSections": "网格构建按此数量的 16x16x16 区段分批，离相机近的先构建，并分散到所有构建线程。\n批次越小结果出现越早；局部重建会逐批生效。",
+  "litematicafastmove.config.name.fastMoveRenderDelay": "fastMoveRenderDelay",
+  "litematicafastmove.config.prettyName.fastMoveRenderDelay": "Fast Move：渲染延迟（毫秒）",
+  "litematicafastmove.config.comment.fastMoveRenderDelay": "投影被移动后，先等这么久再画到新位置。等待期间再次移动会重新计时，因此中间那些位置一次也不会被渲染，对应的重建也跳过。"
 }
