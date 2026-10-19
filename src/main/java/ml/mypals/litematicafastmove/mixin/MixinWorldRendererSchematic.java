@@ -29,29 +29,35 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.joml.Vector4fc;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
 @Mixin(value = WorldRendererSchematic.class, remap = false)
 public class MixinWorldRendererSchematic {
 
 
+    // MixinExtras resolves @Local(name=...) only when the handler parameter type is EXACTLY the type the local
+    // carries in the target's LocalVariableTable: Mixin's LocalVariableDiscriminator.findExplicitLocal compares
+    // Local.type to the context's return type with Type.equals, so a supertype (List for an ArrayList local) is
+    // NOT accepted and the sugar fails with "Unable to find matching local!". This Litematica build declares
+    // these locals as ArrayList / EnumMap / Vector4f - hence the concrete types here.
     @ModifyVariable(method = "prepareBlockLayers", at = @At("LOAD"), name = "startedDrawing")
     private boolean appendDetachedPlacementDraws(boolean startedDrawing,
                                                  @Local(argsOnly = true) Matrix4fc modelView,
                                                  @Local(argsOnly = true, ordinal = 0) double cameraX,
                                                  @Local(argsOnly = true, ordinal = 1) double cameraY,
                                                  @Local(argsOnly = true, ordinal = 2) double cameraZ,
-                                                 @Local(name = "uniformValues") List<Transform> transformValues,
-                                                 @Local(name = "renderMap") Map<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
-                                                 @Local(name = "colorVector") Vector4fc colorMod,
+                                                 @Local(name = "uniformValues") ArrayList<Transform> transformValues,
+                                                 @Local(name = "renderMap") EnumMap<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
+                                                 @Local(name = "colorVector") Vector4f colorMod,
                                                  @Local(name = "matrix4f") Matrix4f texMatrix,
                                                  @Local(name = "indexCount") LocalIntRef indexCount) {
         boolean added = PlacementMeshRenderer.appendDraws(renderMap, transformValues, modelView, colorMod, texMatrix,

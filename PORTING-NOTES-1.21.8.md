@@ -136,15 +136,19 @@ Everything else was verified mechanically, on the named development classpath (h
 `build/classes/java/main`, target descriptors from the Loom-remapped mod jars plus the named Minecraft jar),
 62 checks: 21 `@Inject`, 5 `@WrapMethod`, 8 `@WrapOperation`, 2 `@ModifyReturnValue`, 1 `@ModifyVariable` and
 25 `@Shadow` members. For the two `@ModifyVariable` / `@Inject` handlers that read locals, every
-`@Local(name = ...)` was also checked against 0.23.7's `LocalVariableTable`; they all resolve, and the
-`@Local` parameter types are assignable from the local's type. The checker is
+`@Local(name = ...)` was also checked against 0.23.7's `LocalVariableTable`; the names exist, but MixinExtras
+matches a `@Local(name = …)` parameter against the local's type **exactly** (Mixin's
+`LocalVariableDiscriminator.findExplicitLocal` uses `Type.equals`, so an assignable supertype is rejected).
+0.23.7 declares these locals as the concrete `ArrayList` / `EnumMap` / `Vector4f`, so the sugar parameters
+must carry those types; declaring the `List` / `Map` / `Vector4fc` interfaces aborts the client with
+`Unable to find matching local!` the first time `WorldRendererSchematic` is transformed. The checker is
 `Y:/Temp/User/opencode/mixin-audit.py`, run as
 `python Y:/Temp/User/opencode/mixin-audit.py <worktree> <merged Minecraft jar>`.
 
 ## Assumptions / things to watch in the client run
 
 - The terrain mixes onto Litematica's `renderMap`/uniform list exactly like 1.21.11; the local names above
-  come from 0.23.7's own source, so the MixinExtras `@Local(name = …)` sugar should resolve.
+  come from 0.23.7's own source and the sugar parameter types are the concrete ones the local table declares.
 - `PlacementBlockEntities#renderDetached` draws into `noCullBuffers` (the second `MultiBufferSource` of
   `piecewiseRenderBlockEntities`), matching the 1.20.6 port's choice.
 - Debug boxes are assembled from `BlockPos` pairs, so they are integer-aligned (the mod's section boxes are
