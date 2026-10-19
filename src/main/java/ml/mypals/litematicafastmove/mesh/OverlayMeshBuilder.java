@@ -3,30 +3,29 @@ package ml.mypals.litematicafastmove.mesh;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.render.RenderUtils;
-import fi.dy.masa.litematica.render.schematic.BlockModelCacheSchematic;
 import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
 import fi.dy.masa.litematica.util.IgnoreBlockRegistry;
 import fi.dy.masa.litematica.util.OverlayType;
 import fi.dy.masa.litematica.util.PositionUtils;
-import fi.dy.masa.malilib.util.data.Color4f;
+import fi.dy.masa.malilib.util.Color4f;
 import fi.dy.masa.malilib.util.game.BlockUtils;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-import java.util.List;
 import java.util.function.Function;
 
 /**
- * 在独立网格中生成 overlay（错误 / 缺失 / 多余方块提示），逻辑移植自 Litematica 的
- * ChunkRendererSchematicVbo#renderOverlay，使大型投影的 overlay 与方块一样属于自己的 Buffer，
- * 始终随投影一起移动。
+ * 在独立网格中生成 overlay（错误 / 缺失 / 多余方块提示），逻辑移植自 Litematica 0.21.7 的
+ * ChunkRendererSchematicVbo#renderOverlay / #getOverlayType / #shouldCullOverlayPos，
+ * 使大型投影的 overlay 与方块一样属于自己的 Buffer，始终随投影一起移动。
  *
  * 坐标约定：pos 为构建坐标；客户端世界中的对应位置 = pos + clientDelta；
  * 顶点写入相对区段原点的位置 (x & 15, y & 15, z & 15)。
@@ -39,20 +38,21 @@ final class OverlayMeshBuilder {
     private final DetachedBlockView schematic;
     private final ClientView client;
     private final Function<OverlayRenderType, BufferBuilder> buffers;
+    // 0.21.7 has both: a block ignore registry for the overlay and the "different blocks of the same group" category
+    private final IgnoreBlockRegistry ignoreBlockRegistry = new IgnoreBlockRegistry();
+    private final RandomSource rand = RandomSource.create();
 
     private final boolean enableSides = Configs.Visuals.SCHEMATIC_OVERLAY_ENABLE_SIDES.getBooleanValue();
     private final boolean enableOutlines = Configs.Visuals.SCHEMATIC_OVERLAY_ENABLE_OUTLINES.getBooleanValue();
     private final boolean reducedInnerSides = Configs.Visuals.OVERLAY_REDUCED_INNER_SIDES.getBooleanValue();
     private final boolean modelSides = Configs.Visuals.SCHEMATIC_OVERLAY_MODEL_SIDES.getBooleanValue();
     private final boolean modelOutline = Configs.Visuals.SCHEMATIC_OVERLAY_MODEL_OUTLINE.getBooleanValue();
-    private final boolean renderFluids = Configs.Visuals.ENABLE_SCHEMATIC_FLUIDS.getBooleanValue();
     private final boolean translucentInnerSides = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue() &&
                                                   Configs.Visuals.RENDER_TRANSLUCENT_INNER_SIDES.getBooleanValue();
-    private final boolean overlayCulling = Configs.Visuals.ENABLE_SCHEMATIC_OVERLAY_CULLING.getBooleanValue();
     private final boolean ignoreClientFluids = Configs.Visuals.IGNORE_EXISTING_FLUIDS.getBooleanValue();
-    private final boolean ignoreCropAge = Configs.Visuals.IGNORE_CROP_AGE.getBooleanValue();
     private final boolean differentBlocks = Configs.Generic.ENABLE_DIFFERENT_BLOCKS.getBooleanValue();
-    private final IgnoreBlockRegistry ignoreBlockRegistry = new IgnoreBlockRegistry();
+    private final boolean overlayCulling = Configs.Visuals.ENABLE_SCHEMATIC_OVERLAY_CULLING.getBooleanValue();
+    private final boolean enableSchematicFluids = Configs.Visuals.ENABLE_SCHEMATIC_FLUIDS.getBooleanValue();
 
     private final BlockPos.MutableBlockPos relPos = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos posMutable = new BlockPos.MutableBlockPos();
@@ -70,7 +70,8 @@ final class OverlayMeshBuilder {
     void addOverlay(BlockPos pos, BlockState stateSchematic, BlockState stateClient, boolean missing) {
         OverlayType type = this.getOverlayType(stateSchematic, stateClient);
         Color4f color = getOverlayColor(type);
-        if (color == null || this.shouldCullOverlayPos(pos, stateSchematic, stateClient)) return;
+        if (color == null) return;
+        if (this.shouldCullOverlayPos(pos, stateSchematic, stateClient)) return;
 
         this.relPos.set(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
 
@@ -87,47 +88,40 @@ final class OverlayMeshBuilder {
         boolean useDefault = false;
 
         if (this.reducedInnerSides) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
+            VoxelShape shape = stateSchematic.getCollisionShape(this.schematic, pos);
 
-            if (RenderUtils.hasQuads(modelParts)) {
-                VoxelShape shape = stateSchematic.getCollisionShape(this.schematic, pos);
+            for (Direction side : fi.dy.masa.malilib.util.PositionUtils.ALL_DIRECTIONS) {
+                this.posMutable.set(pos.getX() + side.getStepX(), pos.getY() + side.getStepY(), pos.getZ() + side.getStepZ());
+                OverlayType typeAdj = this.getOverlayType(this.schematic.getBlockState(this.posMutable), this.client.get(this.posMutable));
+                boolean fullSquareSide = Block.isFaceFull(shape, side);
 
-                for (Direction side : fi.dy.masa.malilib.util.position.PositionUtils.ALL_DIRECTIONS) {
-                    this.posMutable.set(pos.getX() + side.getStepX(), pos.getY() + side.getStepY(), pos.getZ() + side.getStepZ());
-                    OverlayType typeAdj = this.getOverlayType(this.schematic.getBlockState(this.posMutable), this.client.get(this.posMutable));
-                    boolean fullSquareSide = Block.isFaceFull(shape, side);
-
-                    if (missing && this.modelSides) {
-                        if (type.getRenderPriority() > typeAdj.getRenderPriority() || !fullSquareSide) {
-                            for (BlockStateModelPart part : modelParts) {
-                                RenderUtils.drawBlockModelQuadOverlayBatched(part, stateSchematic, this.relPos, side, color, 0, quads);
-                            }
-                        } else {
-                            useDefault = true;
-                        }
-                    } else if (type.getRenderPriority() > typeAdj.getRenderPriority()) {
-                        RenderUtils.drawBlockBoxSideBatchedQuads(this.relPos, side, color, 0, quads);
+                if (missing && this.modelSides) {
+                    if (type.getRenderPriority() > typeAdj.getRenderPriority() || !fullSquareSide) {
+                        RenderUtils.drawBlockModelQuadOverlayBatched(getModel(stateSchematic), stateSchematic, this.relPos,
+                                side, color, 0, quads);
                     } else {
                         useDefault = true;
                     }
+                } else if (type.getRenderPriority() > typeAdj.getRenderPriority()) {
+                    RenderUtils.drawBlockBoxSideBatchedQuads(this.relPos, side, color, 0, quads);
+                } else {
+                    useDefault = true;
                 }
-            } else {
-                useDefault = true;
             }
         } else if (missing && this.modelSides) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
-            if (RenderUtils.hasQuads(modelParts)) {
-                RenderUtils.drawBlockModelQuadOverlayBatched(modelParts, stateSchematic, this.relPos, color, 0, quads);
+            BakedModel model = getModel(stateSchematic);
+            if (RenderUtils.modelHasQuads(model, stateSchematic, this.rand)) {
+                RenderUtils.drawBlockModelQuadOverlayBatched(model, stateSchematic, this.relPos, color, 0, quads);
             } else {
                 useDefault = true;
             }
         } else {
-            RenderUtils.drawBlockBoxBatchedQuads(this.relPos, color, 0, quads);
+            useDefault = true;
         }
 
         if (useDefault) {
             try {
-                RenderUtils.drawBlockBoxBatchedQuads(this.relPos, color, 0, quads);
+                fi.dy.masa.malilib.render.RenderUtils.drawBlockBoundingBoxSidesBatchedQuads(this.relPos, color, 0, quads);
             } catch (Exception ignored) {
             }
         }
@@ -136,7 +130,6 @@ final class OverlayMeshBuilder {
     private void renderOutlines(OverlayType type, Color4f baseColor, BlockPos pos, BlockState stateSchematic, boolean missing) {
         BufferBuilder lines = this.buffers.apply(OverlayRenderType.OUTLINE);
         Color4f color = new Color4f(baseColor.r, baseColor.g, baseColor.b, 1f);
-        float lineWidth = 1.0f;
         boolean useDefault = false;
 
         if (this.reducedInnerSides) {
@@ -156,23 +149,23 @@ final class OverlayMeshBuilder {
             }
 
             if (missing && this.modelOutline) {
-                if (stateSchematic.canOcclude()) {
-                    useDefault = true;
+                if (stateSchematic.isSolid()) {
+                    this.renderReducedEdges(pos, adjTypes, color, lines);
                 } else {
-                    List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
-                    if (RenderUtils.hasQuads(modelParts)) {
-                        RenderUtils.drawDebugBlockModelOutlinesBatched(modelParts, stateSchematic, this.relPos, color, 0, lineWidth, lines);
+                    BakedModel model = getModel(stateSchematic);
+                    if (RenderUtils.modelHasQuads(model, stateSchematic, this.rand)) {
+                        RenderUtils.drawBlockModelOutlinesBatched(model, stateSchematic, this.relPos, color, 0, lines);
                     } else {
-                        useDefault = true;
+                        this.renderReducedEdges(pos, adjTypes, color, lines);
                     }
                 }
             } else {
-                this.renderReducedEdges(pos, adjTypes, baseColor, lineWidth, lines);
+                this.renderReducedEdges(pos, adjTypes, color, lines);
             }
         } else if (missing && this.modelOutline) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
-            if (RenderUtils.hasQuads(modelParts)) {
-                RenderUtils.drawDebugBlockModelOutlinesBatched(modelParts, stateSchematic, this.relPos, color, 0, lineWidth, lines);
+            BakedModel model = getModel(stateSchematic);
+            if (RenderUtils.modelHasQuads(model, stateSchematic, this.rand)) {
+                RenderUtils.drawBlockModelOutlinesBatched(model, stateSchematic, this.relPos, color, 0, lines);
             } else {
                 useDefault = true;
             }
@@ -182,13 +175,13 @@ final class OverlayMeshBuilder {
 
         if (useDefault) {
             try {
-                RenderUtils.drawBlockBoundingBoxOutlinesBatchedDebugLines(this.relPos, color, 0, lineWidth, lines);
+                RenderUtils.drawBlockBoundingBoxOutlinesBatchedDebugLines(this.relPos, color, 0, lines);
             } catch (Exception ignored) {
             }
         }
     }
 
-    private void renderReducedEdges(BlockPos pos, OverlayType[][][] adjTypes, Color4f color, float lineWidth, BufferBuilder lines) {
+    private void renderReducedEdges(BlockPos pos, OverlayType[][][] adjTypes, Color4f color, BufferBuilder lines) {
         OverlayType[] neighborTypes = new OverlayType[4];
         Vec3i[] neighborPositions = new Vec3i[4];
 
@@ -227,7 +220,7 @@ final class OverlayMeshBuilder {
 
                     if (posTmp.getX() == pos.getX() && posTmp.getY() == pos.getY() && posTmp.getZ() == pos.getZ()) {
                         try {
-                            RenderUtils.drawBlockBoxEdgeBatchedDebugLines(this.relPos, axis, corner, color, lineWidth, lines);
+                            RenderUtils.drawBlockBoxEdgeBatchedLines(this.relPos, axis, corner, color, lines);
                         } catch (IllegalStateException ignored) {
                             return;
                         }
@@ -237,22 +230,35 @@ final class OverlayMeshBuilder {
         }
     }
 
+    /**
+     * 与 Litematica 0.21.7 的 {@code shouldCullOverlayPos} 一致：不显示流体的投影方块跳过 overlay，
+     * 打开 "Schematic Overlay Culling" 且真实世界为空气时，只看投影自己是否有可渲染的面。
+     */
     private boolean shouldCullOverlayPos(BlockPos pos, BlockState stateSchematic, BlockState stateClient) {
-        if (!stateSchematic.getFluidState().isEmpty() && !this.renderFluids) {
+        if (!stateSchematic.getFluidState().isEmpty() && !this.enableSchematicFluids) {
             return true;
         }
+
         if (this.translucentInnerSides) {
             return false;
         }
+
         if (this.overlayCulling && stateClient.is(BlockTags.AIR)) {
-            for (Direction side : fi.dy.masa.malilib.util.position.PositionUtils.ALL_DIRECTIONS) {
-                // 层范围外在裁剪视图中是空气，裁切面会自然判定为可见
-                if (Block.shouldRenderFace(stateSchematic, this.schematic.getBlockState(pos.relative(side)), side)) {
-                    return false;
+            int count = 0;
+
+            for (Direction side : fi.dy.masa.malilib.util.PositionUtils.ALL_DIRECTIONS) {
+                this.posMutable.setWithOffset(pos, side);
+                if (fi.dy.masa.litematica.data.DataManager.getRenderLayerRange().isPositionAtRenderEdgeOnSide(pos, side) ||
+                    Block.shouldRenderFace(stateSchematic, this.schematic, pos, side, this.posMutable)) {
+                    count++;
                 }
             }
-            return true;
+
+            if (count == 0) {
+                return true;
+            }
         }
+
         return false;
     }
 
@@ -263,11 +269,16 @@ final class OverlayMeshBuilder {
         }
 
         boolean clientHasAir = stateClient.isAir();
+        boolean schematicHasAir = stateSchematic.isAir();
 
-        if (stateSchematic.isAir()) {
-            if (clientHasAir ||
-                (this.ignoreClientFluids && stateClient.liquid()) ||
-                this.ignoreBlockRegistry.hasBlock(stateClient.getBlock())) {
+        if (schematicHasAir) {
+            if (clientHasAir) {
+                return OverlayType.NONE;
+            }
+            if (this.ignoreClientFluids && stateClient.liquid()) {
+                return OverlayType.NONE;
+            }
+            if (this.ignoreBlockRegistry.hasBlock(stateClient.getBlock())) {
                 return OverlayType.NONE;
             }
             return OverlayType.EXTRA;
@@ -278,12 +289,12 @@ final class OverlayMeshBuilder {
         }
         if (stateSchematic.getBlock() != stateClient.getBlock()) {
             if (this.differentBlocks && BlockUtils.isInSameGroup(stateSchematic, stateClient)) {
-                return BlockUtils.matchPropertiesOnly(stateSchematic, stateClient) ? OverlayType.DIFF_BLOCK : OverlayType.WRONG_STATE;
+                if (BlockUtils.matchPropertiesOnly(stateSchematic, stateClient)) {
+                    return OverlayType.DIFF_BLOCK;
+                }
+                return OverlayType.WRONG_STATE;
             }
             return OverlayType.WRONG_BLOCK;
-        }
-        if (this.ignoreCropAge && fi.dy.masa.litematica.util.BlockUtils.areStatesEqualIgnoringAge(stateSchematic, stateClient)) {
-            return OverlayType.NONE;
         }
         return OverlayType.WRONG_STATE;
     }
@@ -299,8 +310,7 @@ final class OverlayMeshBuilder {
         };
     }
 
-    private static List<BlockStateModelPart> getModelParts(BlockState state) {
-        BlockStateModel model = BlockModelCacheSchematic.INSTANCE.fetchBlockStateModel(state);
-        return model != null ? BlockModelCacheSchematic.INSTANCE.getBlockStateModelParts(model) : List.of();
+    private static BakedModel getModel(BlockState state) {
+        return Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
     }
 }
