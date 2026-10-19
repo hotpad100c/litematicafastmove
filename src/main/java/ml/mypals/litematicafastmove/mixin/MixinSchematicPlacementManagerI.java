@@ -126,7 +126,12 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
         }
     }
 
-    @Inject(method = "markChunksForRebuild", at = @At("HEAD"), cancellable = true)
+    /**
+     * Litematica has two overloads: {@code markChunksForRebuild(SchematicPlacement)}, which only forwards to
+     * this one, and {@code markChunksForRebuild(Collection<ChunkPos>)} - the descriptor pins the target so
+     * Mixin does not resolve the name to the SchematicPlacement overload.
+     */
+    @Inject(method = "markChunksForRebuild(Ljava/util/Collection;)V", at = @At("HEAD"), cancellable = true)
     private void skipFrozenChunks(Collection<ChunkPos> chunks, CallbackInfo ci) {
         if (!PendingMoveTracker.hasAnyPending()) return;
 

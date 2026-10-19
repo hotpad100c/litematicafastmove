@@ -105,7 +105,7 @@ public class MixinWorldRendererSchematic {
      * 方块实体同样按差量平移；0.21.7 在 {@code renderBlockEntities} 里画它们。
      */
     @WrapOperation(method = "renderBlockEntities", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/blockentity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
+            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/block/entity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
     private void shiftPendingBlockEntity(BlockEntityRenderDispatcher dispatcher, BlockEntity blockEntity, float partialTicks,
                                          PoseStack matrices, MultiBufferSource buffers, Operation<Void> original) {
         BlockPos pos = blockEntity.getBlockPos();
