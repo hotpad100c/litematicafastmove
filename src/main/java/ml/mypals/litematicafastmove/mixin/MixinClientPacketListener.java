@@ -13,6 +13,6 @@ public abstract class MixinClientPacketListener {
 
     @Inject(method = "handleLevelChunkWithLight", at = @At("RETURN"))
     private void onChunkLoaded(ClientboundLevelChunkWithLightPacket packet, CallbackInfo ci) {
-        PlacementMeshManager.markChunkDirty(packet.x(), packet.z());
+        PlacementMeshManager.markChunkDirty(packet.getX(), packet.getZ());
     }
 }

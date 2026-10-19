@@ -3,15 +3,15 @@ package ml.mypals.litematicafastmove.mesh;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.render.RenderUtils;
-import fi.dy.masa.litematica.render.schematic.BlockModelCacheSchematic;
 import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
 import fi.dy.masa.litematica.util.IgnoreBlockRegistry;
 import fi.dy.masa.litematica.util.OverlayType;
 import fi.dy.masa.litematica.util.PositionUtils;
 import fi.dy.masa.malilib.util.data.Color4f;
 import fi.dy.masa.malilib.util.game.BlockUtils;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.block.model.BlockModelPart;
+import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -32,6 +32,9 @@ import java.util.function.Function;
  * 顶点写入相对区段原点的位置 (x & 15, y & 15, z & 15)。
  */
 final class OverlayMeshBuilder {
+    private static final ThreadLocal<net.minecraft.util.RandomSource> RANDOM =
+            ThreadLocal.withInitial(() -> net.minecraft.util.RandomSource.create(42L));
+
     interface ClientView {
         BlockState get(BlockPos buildPos);
     }
@@ -87,7 +90,7 @@ final class OverlayMeshBuilder {
         boolean useDefault = false;
 
         if (this.reducedInnerSides) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
+            List<BlockModelPart> modelParts = getModelParts(stateSchematic);
 
             if (RenderUtils.hasQuads(modelParts)) {
                 VoxelShape shape = stateSchematic.getCollisionShape(this.schematic, pos);
@@ -99,7 +102,7 @@ final class OverlayMeshBuilder {
 
                     if (missing && this.modelSides) {
                         if (type.getRenderPriority() > typeAdj.getRenderPriority() || !fullSquareSide) {
-                            for (BlockStateModelPart part : modelParts) {
+                            for (BlockModelPart part : modelParts) {
                                 RenderUtils.drawBlockModelQuadOverlayBatched(part, stateSchematic, this.relPos, side, color, 0, quads);
                             }
                         } else {
@@ -115,7 +118,7 @@ final class OverlayMeshBuilder {
                 useDefault = true;
             }
         } else if (missing && this.modelSides) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
+            List<BlockModelPart> modelParts = getModelParts(stateSchematic);
             if (RenderUtils.hasQuads(modelParts)) {
                 RenderUtils.drawBlockModelQuadOverlayBatched(modelParts, stateSchematic, this.relPos, color, 0, quads);
             } else {
@@ -159,7 +162,7 @@ final class OverlayMeshBuilder {
                 if (stateSchematic.canOcclude()) {
                     useDefault = true;
                 } else {
-                    List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
+                    List<BlockModelPart> modelParts = getModelParts(stateSchematic);
                     if (RenderUtils.hasQuads(modelParts)) {
                         RenderUtils.drawDebugBlockModelOutlinesBatched(modelParts, stateSchematic, this.relPos, color, 0, lineWidth, lines);
                     } else {
@@ -170,7 +173,7 @@ final class OverlayMeshBuilder {
                 this.renderReducedEdges(pos, adjTypes, baseColor, lineWidth, lines);
             }
         } else if (missing && this.modelOutline) {
-            List<BlockStateModelPart> modelParts = getModelParts(stateSchematic);
+            List<BlockModelPart> modelParts = getModelParts(stateSchematic);
             if (RenderUtils.hasQuads(modelParts)) {
                 RenderUtils.drawDebugBlockModelOutlinesBatched(modelParts, stateSchematic, this.relPos, color, 0, lineWidth, lines);
             } else {
@@ -299,8 +302,9 @@ final class OverlayMeshBuilder {
         };
     }
 
-    private static List<BlockStateModelPart> getModelParts(BlockState state) {
-        BlockStateModel model = BlockModelCacheSchematic.INSTANCE.fetchBlockStateModel(state);
-        return model != null ? BlockModelCacheSchematic.INSTANCE.getBlockStateModelParts(model) : List.of();
+    private static List<BlockModelPart> getModelParts(BlockState state) {
+        // 1.21.11 没有 Litematica 自己的模型缓存，直接从方块渲染管理器取模型
+        BlockStateModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
+        return model.collectParts(RANDOM.get());
     }
 }
