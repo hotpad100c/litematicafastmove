@@ -52,6 +52,37 @@ The same seven drops as the 1.21.4 port, with the same reasons (see `PORTING-NOT
 `BlockModelCacheSchematicAccessor`, and `MixinPlacementManagerTaskRebuild` + `PlacementManagerTaskAccessor`
 (replaced by the two `markChunk(s)ForRebuild` hooks).
 
+## Mixin injections that only fail at client start (found by the first client smoke)
+
+`./gradlew build` compiles the handlers but never checks that they fit the target method, so two injections
+were broken and Litematica's mixin application would have aborted the client:
+
+1. **`MixinSchematicPlacementManagerI.skipFrozenChunks` (Ambiguous target).** Litematica has two
+   `markChunksForRebuild` overloads: `(SchematicPlacement)V` (public, only forwards to the other one) and
+   `(Collection<ChunkPos>)V` (the one every entry point funnels through, and the one the handler matches).
+   With a bare method name Mixin resolves the *name* first and then validates the handler against the first
+   overload, so it failed with
+   `Expected (SchematicPlacement;CallbackInfo)V but found (Collection;CallbackInfo)V` on 1.21.4. The injection
+   now pins the descriptor: `method = "markChunksForRebuild(Ljava/util/Collection;)V"`. The descriptor only
+   contains JDK types, so it is identical in development and production.
+2. **`MixinWorldRendererSchematic.shiftPendingBlockEntity` (Wrong class in the `@At` target).** The target
+   named `Lnet/minecraft/world/level/blockentity/BlockEntity;`, but `BlockEntity` lives in
+   `net/minecraft/world/level/block/entity/` — `blockentity` is the package of `BlockEntityRenderDispatcher`,
+   not of `BlockEntity`. The invoke could never match; it is now
+   `Lnet/minecraft/world/level/block/entity/BlockEntity;`.
+
+Both came from the 1.20.6 port, which was never run in a client; `port/1.20.6` still carries them.
+
+Everything else was verified mechanically, per branch, on the named development classpath (handler
+descriptors from `build/classes/java/main`, target descriptors from the Loom-remapped mod jars plus the named
+Minecraft jar), 61 checks per branch: 19 `@Inject`, 10 `@WrapMethod`, 7 `@WrapOperation`,
+1 `@ModifyReturnValue` and 24 `@Shadow` members. For each one the declared parameters (minus the callback /
+`Operation` objects) must equal the target's parameters in order; a `@WrapOperation` may additionally capture
+the receiver, which must then be the invoked method's owner; the callback kind must match a void/non-void
+target and the static-ness must match; the name-only targets must be unambiguous; and each `@At` invoke must
+really occur in the wrapped method's body (with `ordinal` counted, e.g. `ConfigUtils.readConfigBase` is the
+5th call, ordinal 4 = Visuals). The ad-hoc checker used is `Y:/Temp/User/opencode/mixin-audit.py`.
+
 ## Assumptions / things to watch in the client run
 
 - Same as 1.21.4: the shader is re-read after `RenderType#setupRenderState()` and null draws are skipped, the
