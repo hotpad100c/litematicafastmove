@@ -49,7 +49,7 @@ dependencies {
 	modLocalRuntime "maven.modrinth:YL57xq9U:${project.iris_version}"
 	modLocalRuntime "maven.modrinth:AANobbMI:${project.sodium_version}"
 	// Iris nests these in its jar, but the development runtime does not load nested jars of dependencies.
-	for (library in ["org.anarres:jcpp:1.4.14", "org.antlr:antlr4-runtime:4.13.1", "io.github.douira:glsl-transformer:3.0.0-pre3"]) {
+	for (library in ["org.anarres:jcpp:1.4.14", "org.antlr:antlr4-runtime:4.13.1", "io.github.douira:glsl-transformer:"]) {
 		localRuntime(library) { transitive = false }
 	}
 }
