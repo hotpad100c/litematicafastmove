@@ -13,8 +13,8 @@ public class MixinLitematicaRenderer {
     // The block layers themselves are routed inside WorldRendererSchematic#renderBlockLayer, which is where the
     // detached placement meshes are appended as well.
     @WrapMethod(method = "piecewiseRenderOverlay")
-    private void routeOverlay(PoseStack matrices, com.mojang.math.Matrix4f projMatrix, Operation<Void> original) {
-        SchematicExit.portal(() -> original.call(matrices, projMatrix));
+    private void routeOverlay(PoseStack matrices, Operation<Void> original) {
+        SchematicExit.portal(() -> original.call(matrices));
     }
 
     @WrapMethod(method = "piecewiseRenderEntities")
