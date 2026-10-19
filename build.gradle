@@ -124,3 +124,14 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+// The dev runtime must use the LWJGL that this Minecraft version ships (3.3.1). Litematica/malilib metadata asks for
+// a 3.3.2 snapshot, and Sodium refuses to start when it finds that instead: "Installed version: 3.3.2-snapshot,
+// Required version: 3.3.1". Forcing the group keeps the client runnable; the packaged mod is unaffected.
+configurations.all {
+	resolutionStrategy.eachDependency { details ->
+		if (details.requested.group == 'org.lwjgl') {
+			details.useVersion '3.3.1'
+		}
+	}
+}
