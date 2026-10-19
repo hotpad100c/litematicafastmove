@@ -7,8 +7,8 @@ import ml.mypals.exit.api.ExitChannel;
 import ml.mypals.exit.api.ExitOptions;
 import ml.mypals.litematicafastmove.mesh.MeshDebugGizmos;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.resources.Identifier;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.resources.ResourceLocation;
 
 import static ml.mypals.litematicafastmove.LitematicaFastMove.MOD_ID;
 
@@ -21,7 +21,7 @@ public final class SchematicExit {
 
     private static ExitChannel channel() {
         if (channel == null) {
-            channel = Exit.channel(Identifier.fromNamespaceAndPath(MOD_ID, "schematic"), ExitOptions.builder()
+            channel = Exit.channel(ResourceLocation.fromNamespaceAndPath(MOD_ID, "schematic"), ExitOptions.builder()
                     .wantsFrame(() -> Configs.Visuals.ENABLE_RENDERING.getBooleanValue() || MeshDebugGizmos.isEnabled())
                     .build());
         }
@@ -45,7 +45,11 @@ public final class SchematicExit {
         return ENABLED && Exit.isRouting() ? Exit.redirect(original) : original;
     }
 
-    public static SubmitNodeCollector batch(SubmitNodeCollector original) {
+    /**
+     * Litematica 0.21.7 still draws through {@link MultiBufferSource}, so drawings that Litematica submits
+     * itself (entities, block entities) are routed into the channel's batch here.
+     */
+    public static MultiBufferSource batch(MultiBufferSource original) {
         return ENABLED ? channel().batch(original) : original;
     }
 

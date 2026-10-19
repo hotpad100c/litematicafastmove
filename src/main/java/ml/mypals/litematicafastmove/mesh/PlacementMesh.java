@@ -1,16 +1,14 @@
 package ml.mypals.litematicafastmove.mesh;
 
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import org.lwjgl.system.MemoryUtil;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,22 +29,61 @@ final class PlacementMesh {
         }
     }
 
-    // hash：顶点数据的内容哈希，与旧网格相同则直接沿用旧 buffer，不重新上传
-    record CpuLayer(ChunkSectionLayer layer, OverlayRenderType overlay, ByteBuffer vertices, int indexCount,
-                    ByteBuffer indices, IndexType indexType, MeshData.SortState sortState, long hash) {
+    /**
+     * 一个待上传的网格层。1.21.4 builds into a {@link ByteBufferBuilder} and finishes with a {@link MeshData}
+     * (the 1.21.2 buffer API), which {@link MeshUploader} uploads on the render thread.
+     * The allocation is owned by this instance until it is uploaded (VertexBuffer#upload closes the MeshData)
+     * or freed.
+     */
+    static final class CpuLayer {
+        final RenderType layer;
+        final OverlayRenderType overlay;
+        final int indexCount;
+        final int vertexBytes;
+        // 半透明层的排序状态：用于相机移动后只重建索引缓冲
+        final MeshData.SortState sortState;
+        final long hash;
+        // The allocator owns the memory the MeshData points into; both are released together.
+        private final ByteBufferBuilder allocator;
+        private MeshData mesh;
+
+        CpuLayer(RenderType layer, OverlayRenderType overlay, ByteBufferBuilder allocator, MeshData mesh,
+                 int indexCount, int vertexBytes, MeshData.SortState sortState, long hash) {
+            this.layer = layer;
+            this.overlay = overlay;
+            this.allocator = allocator;
+            this.mesh = mesh;
+            this.indexCount = indexCount;
+            this.vertexBytes = vertexBytes;
+            this.sortState = sortState;
+            this.hash = hash;
+        }
+
+        MeshData take() {
+            MeshData taken = this.mesh;
+            this.mesh = null;
+            return taken;
+        }
+
+        /** VertexBuffer#upload closed the MeshData, so only the buffer memory is left to free. */
+        void releaseAllocator() {
+            this.allocator.close();
+        }
+
         void free() {
-            MemoryUtil.memFree(this.vertices);
-            if (this.indices != null) {
-                MemoryUtil.memFree(this.indices);
+            if (this.mesh != null) {
+                this.mesh.close();
+                this.mesh = null;
             }
+            this.allocator.close();
         }
     }
     // clientEmpty：构建时对应的真实世界区域 (外扩 1 格) 全是空气
-    // blockEntities：需要显示的方块实体位置 (构建坐标，BlockPos.asLong)，交给 Litematica 登记渲染
+    // blockEntities：需要显示的方块实体位置 (构建坐标，BlockPos.asLong)
     record CpuSection(long key, BlockPos origin, boolean hasBlocks, boolean clientEmpty, Clip clip, List<CpuLayer> layers, long[] blockEntities) {}
 
     static final class SortInfo {
-        final MeshData.SortState state;
+        MeshData.SortState state;
         double lastX, lastY, lastZ;
         boolean pending;
 
@@ -58,18 +95,33 @@ final class PlacementMesh {
         }
     }
 
-    record GpuLayer(ChunkSectionLayer layer, OverlayRenderType overlay, GpuBuffer vertexBuffer, int indexCount,
-                    GpuBuffer indexBuffer, IndexType indexType, SortInfo sort, int vertexBytes, long hash) {
+    static final class GpuLayer {
+        final RenderType layer;
+        final OverlayRenderType overlay;
+        final VertexBuffer vertexBuffer;
+        final int indexCount;
+        final int vertexBytes;
+        final SortInfo sort;
+        final long hash;
+
+        GpuLayer(RenderType layer, OverlayRenderType overlay, VertexBuffer vertexBuffer,
+                 int indexCount, int vertexBytes, SortInfo sort, long hash) {
+            this.layer = layer;
+            this.overlay = overlay;
+            this.vertexBuffer = vertexBuffer;
+            this.indexCount = indexCount;
+            this.vertexBytes = vertexBytes;
+            this.sort = sort;
+            this.hash = hash;
+        }
+
         boolean sameContent(CpuLayer cpu) {
-            return this.layer == cpu.layer() && this.overlay == cpu.overlay() && this.indexCount == cpu.indexCount() &&
-                   this.vertexBytes == cpu.vertices().remaining() && this.hash == cpu.hash();
+            return this.layer == cpu.layer && this.overlay == cpu.overlay && this.indexCount == cpu.indexCount &&
+                   this.vertexBytes == cpu.vertexBytes && this.hash == cpu.hash;
         }
 
         void close() {
             this.vertexBuffer.close();
-            if (this.indexBuffer != null) {
-                this.indexBuffer.close();
-            }
         }
     }
     // hasBlocks：区段内有投影方块，即使被层范围裁空也保留，范围变化时据此判断是否重建

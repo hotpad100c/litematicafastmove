@@ -2,102 +2,127 @@ package ml.mypals.litematicafastmove.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.llamalad7.mixinextras.sugar.Local;
-import com.llamalad7.mixinextras.sugar.ref.LocalIntRef;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.commands.RenderPass;
 import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
 import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
+import ml.mypals.litematicafastmove.mesh.PlacementBlockEntities;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshManager;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshRenderer;
+import ml.mypals.litematicafastmove.render.SchematicExit;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.DynamicGpuData;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.CompiledShaderProgram;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
-import org.joml.Vector4fc;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.List;
-import java.util.Map;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = WorldRendererSchematic.class, remap = false)
 public class MixinWorldRendererSchematic {
 
-
-    @ModifyVariable(method = "prepareBlockLayers", at = @At("LOAD"), name = "startedDrawing")
-    private boolean appendDetachedPlacementDraws(boolean startedDrawing,
-                                                 @Local(argsOnly = true) Matrix4fc modelView,
-                                                 @Local(argsOnly = true, ordinal = 0) double cameraX,
-                                                 @Local(argsOnly = true, ordinal = 1) double cameraY,
-                                                 @Local(argsOnly = true, ordinal = 2) double cameraZ,
-                                                 @Local(name = "transformValues") List<DynamicGpuData.Transform> transformValues,
-                                                 @Local(name = "renderMap") Map<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
-                                                 @Local(name = "colorMod") Vector4fc colorMod,
-                                                 @Local(name = "texMatrix") Matrix4f texMatrix,
-                                                 @Local(name = "indexCount") LocalIntRef indexCount) {
-        boolean added = PlacementMeshRenderer.appendDraws(renderMap, transformValues, modelView, colorMod, texMatrix,
-                cameraX, cameraY, cameraZ, indexCount);
-        return startedDrawing || added;
+    /**
+     * Litematica 0.21.7 draws one {@link RenderType} at a time instead of collecting a render map, so the
+     * detached placement meshes are appended right after Litematica finished that same layer.
+     */
+    @Inject(method = "renderBlockLayer", at = @At("RETURN"))
+    private void appendDetachedDraws(RenderType layer, Matrix4f matrices, Camera camera, Matrix4f projMatrix,
+                                     ProfilerFiller profiler, CompiledShaderProgram shader,
+                                     CallbackInfoReturnable<Integer> cir) {
+        Vec3 cameraPos = camera.getPosition();
+        PlacementMeshRenderer.renderLayer(layer, matrices, projMatrix, cameraPos.x, cameraPos.y, cameraPos.z);
     }
 
     @Inject(method = "renderBlockOverlay", at = @At("RETURN"))
-    private void drawDetachedPlacementOverlays(OverlayRenderType type, Camera camera, float lineWidth, ProfilerFiller profiler, CallbackInfo ci) {
-        PlacementMeshRenderer.drawOverlays(type, camera);
-    }
-
-    @WrapOperation(method = "renderEntities", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V"))
-    private void shiftPendingEntity(EntityRenderDispatcher dispatcher, EntityRenderState state, CameraRenderState cameraState,
-                                    double x, double y, double z, PoseStack matrices, SubmitNodeCollector queue, Operation<Void> original) {
-        if (PendingMoveTracker.hasAnyObjectShift()) {
-            Vec3 shift = PendingMoveTracker.getObjectShift(state.x, state.y, state.z);
-            if (shift != null) {
-                x += shift.x;
-                y += shift.y;
-                z += shift.z;
-            }
-        }
-        original.call(dispatcher, state, cameraState, x, y, z, matrices, queue);
-    }
-
-    @Inject(method = "renderBlockEntities", at = @At(value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(DDD)V", shift = At.Shift.AFTER))
-    private void shiftPendingBlockEntity(Camera camera, Frustum frustum, PoseStack matrices, LevelRenderState renderStates,
-                                         SubmitNodeCollector queue, ProfilerFiller profiler, CallbackInfo ci,
-                                         @Local BlockEntityRenderState state) {
-        if (!PendingMoveTracker.hasAnyObjectShift()) return;
-
-        BlockPos pos = state.blockPos;
-        Vec3 shift = PendingMoveTracker.getObjectShift(pos.getX(), pos.getY(), pos.getZ());
-        if (shift != null) {
-            matrices.translate(shift.x, shift.y, shift.z);
-        }
+    private void drawDetachedPlacementOverlays(OverlayRenderType type, Matrix4f matrices, Camera camera, Matrix4f projMatrix,
+                                               ProfilerFiller profiler, CallbackInfo ci) {
+        PlacementMeshRenderer.drawOverlays(type, matrices, camera, projMatrix);
     }
 
     @Inject(method = "setupTerrain", at = @At("HEAD"))
-    private void captureFrustum(Camera camera, Frustum frustum, int frameCount, boolean playerSpectator, ProfilerFiller profiler, CallbackInfo ci) {
+    private void captureFrustum(Camera camera, Frustum frustum, int frameCount, boolean playerSpectator,
+                                ProfilerFiller profiler, CallbackInfo ci) {
         PlacementMeshRenderer.captureFrustum(frustum);
     }
 
     @Inject(method = "loadRenderers", at = @At("RETURN"))
     private void onLoadRenderers(ProfilerFiller profiler, CallbackInfo ci) {
         PlacementMeshManager.rebuildAll();
+    }
+
+    /**
+     * 被接管的投影不会进入 Litematica 的区块网格，所以它们的方块实体在这里自己画：
+     * 位置按 origin/lag 平移，绘制结果进入 EXIT 的 batch。
+     *
+     * 0.21.7 renders the block entities in {@code renderBlockEntities} (0.18.3 did it in {@code renderEntities}).
+     */
+    @Inject(method = "renderBlockEntities", at = @At("RETURN"))
+    private void renderDetachedBlockEntities(Camera camera, Frustum frustum, PoseStack matrices,
+                                             MultiBufferSource.BufferSource buffers,
+                                             MultiBufferSource.BufferSource buffers2, float partialTicks,
+                                             ProfilerFiller profiler, CallbackInfo ci) {
+        if (!PlacementMeshManager.hasMeshes()) return;
+
+        SchematicExit.portal(() -> {
+            PoseStack poseStack = new PoseStack();
+            MultiBufferSource.BufferSource source = Minecraft.getInstance().renderBuffers().bufferSource();
+            PlacementBlockEntities.renderDetached(camera, partialTicks, poseStack, SchematicExit.batch(source));
+        });
+    }
+
+    /**
+     * 移动尚未提交时，WorldSchematic 里的实体还在旧位置，这里按差量平移渲染，
+     * 同时把它们的 buffer source 交给 EXIT 的 batch。
+     */
+    @WrapOperation(method = "renderEntities", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;render(Lnet/minecraft/world/entity/Entity;DDDFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"))
+    private void shiftPendingEntity(EntityRenderDispatcher dispatcher, Entity entity, double x, double y, double z,
+                                    float partialTicks, PoseStack matrices, MultiBufferSource buffers, int light,
+                                    Operation<Void> original) {
+        Vec3 shift = PendingMoveTracker.hasAnyObjectShift()
+                ? PendingMoveTracker.getObjectShift(entity.getX(), entity.getY(), entity.getZ())
+                : null;
+        original.call(dispatcher, entity,
+                x + (shift != null ? shift.x : 0.0),
+                y + (shift != null ? shift.y : 0.0),
+                z + (shift != null ? shift.z : 0.0),
+                partialTicks, matrices, SchematicExit.batch(buffers), light);
+    }
+
+    /**
+     * 方块实体同样按差量平移；0.21.7 在 {@code renderBlockEntities} 里画它们。
+     */
+    @WrapOperation(method = "renderBlockEntities", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/blockentity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
+    private void shiftPendingBlockEntity(BlockEntityRenderDispatcher dispatcher, BlockEntity blockEntity, float partialTicks,
+                                         PoseStack matrices, MultiBufferSource buffers, Operation<Void> original) {
+        BlockPos pos = blockEntity.getBlockPos();
+        Vec3 shift = PendingMoveTracker.hasAnyObjectShift()
+                ? PendingMoveTracker.getObjectShift(pos.getX(), pos.getY(), pos.getZ())
+                : null;
+        if (shift == null) {
+            original.call(dispatcher, blockEntity, partialTicks, matrices, SchematicExit.batch(buffers));
+            return;
+        }
+
+        matrices.pushPose();
+        try {
+            matrices.translate(shift.x, shift.y, shift.z);
+            original.call(dispatcher, blockEntity, partialTicks, matrices, SchematicExit.batch(buffers));
+        } finally {
+            matrices.popPose();
+        }
     }
 }
