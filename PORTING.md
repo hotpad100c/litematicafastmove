@@ -42,6 +42,15 @@ Work per version:
    the mod's mixins must apply (Litematica's own log prints the mixin count).
 6. Commit per version on `port/<mc>`. Local commits only; pushing is done from the main checkout.
 
+## Building every version at once
+
+`scripts/build-all.sh` (Git Bash) builds the current checkout plus every local `port/<mc>` branch and copies the jars to
+`dist/`. Each port branch is checked out once as a worktree under `worktrees/<mc>` (git-ignored) and reused. A version
+whose EXIT artifact is not in mavenLocal is skipped; build logs of failed versions stay in `dist/build-<mc>.log`.
+`scripts/build-all.sh 1.21.11 1.20.1` builds only those (`main` = the current checkout).
+
+Changes made on the main branch reach the ports by merging it into each `port/<mc>`.
+
 ## Rules for a development client run (machine-wide)
 
 - **Minecraft clients do not announce themselves**: no sound (no audio device, narrator off), hidden window,
