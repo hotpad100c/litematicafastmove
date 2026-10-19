@@ -98,6 +98,49 @@ fields (`box.minX` …) in 0.25.7.
    range, so there is no range-edge test to patch on the builder thread. The block equivalent
    (`MixinBlockModelRendererSchematic`) is kept.
 
+## Mixin injections that only fail at client start (found by the static audit)
+
+`./gradlew build` compiles the handlers but never checks that they fit the target method, and this branch has
+never been run in a client. Six injections were broken; the client would have died at startup the moment
+Litematica's placement manager / renderer was transformed:
+
+1. **`MixinLitematicaRenderer.routeEntities` (Wrong parameter types in the `@At` target).** The target named
+   `WorldRendererSchematic;renderEntities(...MultiBufferSource;F...)V`, but 0.23.7's `renderEntities` (and the
+   invoke in `piecewiseRenderEntities`, which is where the injection points) take
+   `MultiBufferSource$BufferSource`. The handler parameter and the target now both use
+   `MultiBufferSource.BufferSource`.
+2. **`MixinLitematicaRenderer.routeBlockEntities` (Same, for both buffers).** `piecewiseRenderBlockEntities`
+   invokes `renderBlockEntities(Camera, Frustum, PoseStack, MultiBufferSource$BufferSource,
+   MultiBufferSource$BufferSource, float, ProfilerFiller)V`; both `MultiBufferSource` in the target string and
+   in the handler were too wide.
+3. **`MixinWorldRendererSchematic.renderDetachedBlockEntities` (Handler parameters too wide).** Mixin compares
+   a handler's parameter types with the target's for equality (only `@Coerce` primitives are allowed to
+   differ), so `(MultiBufferSource, MultiBufferSource)` for `renderBlockEntities`'s two
+   `MultiBufferSource$BufferSource` parameters is "Invalid descriptor". Now `MultiBufferSource.BufferSource`.
+4. **`MixinWorldRendererSchematic.shiftPendingEntity` (Stale parameter list).** The target had the 1.20.6
+   signature `render(Entity, double, double, double, float, float, PoseStack, MultiBufferSource, int)V`, but
+   in 1.21.8 `EntityRenderDispatcher#render` has a single `float`; the extra `yaw` parameter is gone from the
+   target string, the handler and `original.call`.
+5. **`MixinWorldRendererSchematic.shiftPendingBlockEntity` (Wrong class in the `@At` target).** The target
+   named `Lnet/minecraft/world/level/blockentity/BlockEntity;`, but `BlockEntity` lives in
+   `net/minecraft/world/level/block/entity/` - `blockentity` is the package of `BlockEntityRenderDispatcher`,
+   not of `BlockEntity`. The invoke could never match. The built jar shows the defect plainly: the owner and
+   the other Minecraft types of that target string were remapped to intermediary, while
+   `net/minecraft/world/level/blockentity/BlockEntity` stayed named, because no such class exists.
+6. **`MixinSchematicPlacementManagerI.skipFrozenChunks` (Ambiguous target).** 0.23.7 has two
+   `markChunksForRebuild` overloads: `(SchematicPlacement)V` (public, only forwards to the other one) and
+   `(Collection<ChunkPos>)V` (the one the handler matches). The injection now pins the descriptor:
+   `method = "markChunksForRebuild(Ljava/util/Collection;)V"`.
+
+Everything else was verified mechanically, on the named development classpath (handler descriptors from
+`build/classes/java/main`, target descriptors from the Loom-remapped mod jars plus the named Minecraft jar),
+62 checks: 21 `@Inject`, 5 `@WrapMethod`, 8 `@WrapOperation`, 2 `@ModifyReturnValue`, 1 `@ModifyVariable` and
+25 `@Shadow` members. For the two `@ModifyVariable` / `@Inject` handlers that read locals, every
+`@Local(name = ...)` was also checked against 0.23.7's `LocalVariableTable`; they all resolve, and the
+`@Local` parameter types are assignable from the local's type. The checker is
+`Y:/Temp/User/opencode/mixin-audit.py`, run as
+`python Y:/Temp/User/opencode/mixin-audit.py <worktree> <merged Minecraft jar>`.
+
 ## Assumptions / things to watch in the client run
 
 - The terrain mixes onto Litematica's `renderMap`/uniform list exactly like 1.21.11; the local names above

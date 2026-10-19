@@ -39,17 +39,17 @@ public class MixinLitematicaRenderer {
      * 换成 EXIT 通道的 batch，它们就会在关卡渲染末尾（着色器包之后）一起画。
      */
     @WrapOperation(method = "piecewiseRenderEntities", at = @At(value = "INVOKE",
-            target = "Lfi/dy/masa/litematica/render/schematic/WorldRendererSchematic;renderEntities(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;FLnet/minecraft/util/profiling/ProfilerFiller;)V"))
+            target = "Lfi/dy/masa/litematica/render/schematic/WorldRendererSchematic;renderEntities(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;FLnet/minecraft/util/profiling/ProfilerFiller;)V"))
     private void routeEntities(WorldRendererSchematic renderer, Camera camera, Frustum frustum, PoseStack matrices,
-                               MultiBufferSource buffers, float partialTicks, ProfilerFiller profiler, Operation<Void> original) {
+                               MultiBufferSource.BufferSource buffers, float partialTicks, ProfilerFiller profiler, Operation<Void> original) {
         original.call(renderer, camera, frustum, matrices, SchematicExit.batch(buffers), partialTicks, profiler);
     }
 
     @WrapOperation(method = "piecewiseRenderBlockEntities", at = @At(value = "INVOKE",
-            target = "Lfi/dy/masa/litematica/render/schematic/WorldRendererSchematic;renderBlockEntities(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/client/renderer/MultiBufferSource;FLnet/minecraft/util/profiling/ProfilerFiller;)V"))
+            target = "Lfi/dy/masa/litematica/render/schematic/WorldRendererSchematic;renderBlockEntities(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;FLnet/minecraft/util/profiling/ProfilerFiller;)V"))
     private void routeBlockEntities(WorldRendererSchematic renderer, Camera camera, Frustum frustum, PoseStack matrices,
-                                    MultiBufferSource buffers, MultiBufferSource noCullBuffers, float partialTicks,
-                                    ProfilerFiller profiler, Operation<Void> original) {
+                                    MultiBufferSource.BufferSource buffers, MultiBufferSource.BufferSource noCullBuffers,
+                                    float partialTicks, ProfilerFiller profiler, Operation<Void> original) {
         original.call(renderer, camera, frustum, matrices, SchematicExit.batch(buffers),
                 SchematicExit.batch(noCullBuffers), partialTicks, profiler);
     }

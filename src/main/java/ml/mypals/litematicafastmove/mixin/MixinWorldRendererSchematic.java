@@ -69,9 +69,9 @@ public class MixinWorldRendererSchematic {
      * 同时把它们的 buffer source 交给 EXIT 的 batch。
      */
     @WrapOperation(method = "renderEntities", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;render(Lnet/minecraft/world/entity/Entity;DDDFFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"))
+            target = "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;render(Lnet/minecraft/world/entity/Entity;DDDFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"))
     private void shiftPendingEntity(EntityRenderDispatcher dispatcher, Entity entity, double x, double y, double z,
-                                    float yaw, float partialTicks, PoseStack matrices, MultiBufferSource buffers, int light,
+                                    float partialTicks, PoseStack matrices, MultiBufferSource buffers, int light,
                                     Operation<Void> original) {
         Vec3 shift = PendingMoveTracker.hasAnyObjectShift()
                 ? PendingMoveTracker.getObjectShift(entity.getX(), entity.getY(), entity.getZ())
@@ -80,7 +80,7 @@ public class MixinWorldRendererSchematic {
                 x + (shift != null ? shift.x : 0.0),
                 y + (shift != null ? shift.y : 0.0),
                 z + (shift != null ? shift.z : 0.0),
-                yaw, partialTicks, matrices, SchematicExit.batch(buffers), light);
+                partialTicks, matrices, SchematicExit.batch(buffers), light);
     }
 
     /**
@@ -88,9 +88,10 @@ public class MixinWorldRendererSchematic {
      * 位置按 origin/lag 平移，绘制结果进入 EXIT 的 batch。
      */
     @Inject(method = "renderBlockEntities", at = @At("RETURN"))
-    private void renderDetachedBlockEntities(Camera camera, Frustum frustum, PoseStack matrices, MultiBufferSource buffers,
-                                             MultiBufferSource noCullBuffers, float partialTicks, ProfilerFiller profiler,
-                                             CallbackInfo ci) {
+    private void renderDetachedBlockEntities(Camera camera, Frustum frustum, PoseStack matrices,
+                                             MultiBufferSource.BufferSource buffers,
+                                             MultiBufferSource.BufferSource noCullBuffers, float partialTicks,
+                                             ProfilerFiller profiler, CallbackInfo ci) {
         if (!PlacementBlockEntities.hasAny()) return;
 
         SchematicExit.portal(() -> {
@@ -100,7 +101,7 @@ public class MixinWorldRendererSchematic {
     }
 
     @WrapOperation(method = "renderBlockEntities", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/blockentity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
+            target = "Lnet/minecraft/client/renderer/blockentity/BlockEntityRenderDispatcher;render(Lnet/minecraft/world/level/block/entity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
     private void shiftPendingBlockEntity(BlockEntityRenderDispatcher dispatcher, BlockEntity blockEntity, float partialTicks,
                                          PoseStack matrices, MultiBufferSource buffers, Operation<Void> original) {
         BlockPos pos = blockEntity.getBlockPos();
