@@ -110,7 +110,12 @@ Everything else ported 1:1 — no feature of the 26.3 branch is missing on this 
 - Model-part collection and the AO brightness cache use per-thread `RandomSource`s.
 - `MixinWorldRendererSchematic#appendDetachedPlacementDraws` still injects at the `startedDrawing` load in
   `prepareBlockLayers`; 0.26.16 has the same local names (`transformValues`, `renderMap`, `colorMod`,
-  `texMatrix`, `indexCount`), so the sugar should resolve as before.
+  `texMatrix`, `indexCount`). 0.26.16 declares the first three as the concrete `ArrayList` / `EnumMap` /
+  `Vector4f`, not as the `List` / `Map` / `Vector4fc` interfaces 0.29.1 uses, and MixinExtras matches a
+  `@Local(name = …)` parameter against the local's type **exactly** (Mixin's
+  `LocalVariableDiscriminator.findExplicitLocal` uses `Type.equals`, so no supertype is accepted) - the sugar
+  parameters therefore carry the concrete types, otherwise the client dies with
+  `Unable to find matching local!` as soon as `WorldRendererSchematic` is transformed.
 - `fabricloader >=0.16.8` in `fabric.mod.json` follows the 1.20.6 port (the dev runs use loader 0.19.5).
 - Iris/Sodium nested libraries are extracted from their jars at build time (EXIT's `nestedLibraries` task), so
   no glsl-transformer version is hardcoded.
