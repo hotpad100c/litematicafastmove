@@ -54,6 +54,8 @@ public final class PlacementMeshRenderer {
      */
     public static void renderLayer(RenderType layer, Matrix4f matrices, Matrix4f projMatrix,
                                    double cameraX, double cameraY, double cameraZ) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -90,6 +92,9 @@ public final class PlacementMeshRenderer {
             float alpha = (float) Configs.Visuals.GHOST_BLOCK_ALPHA.getDoubleValue();
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
         }
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         try {
             ShaderInstance shader = RenderSystem.getShader();
             if (shader != null) {
@@ -118,7 +123,7 @@ public final class PlacementMeshRenderer {
     private static void draw(VertexBuffer buffer, Matrix4f modelView, Matrix4f projMatrix, ShaderInstance shader,
                              double ox, double oy, double oz) {
         if (shader == null) return;
-        Matrix4f translated = new Matrix4f(modelView).translate((float) ox, (float) oy, (float) oz);
+        Matrix4f translated = new Matrix4f(modelView).translate((float) ox + Integer.getInteger("lfm.shift", 0), (float) oy, (float) oz);
         buffer.bind();
         buffer.drawWithShader(translated, projMatrix, shader);
         VertexBuffer.unbind();
