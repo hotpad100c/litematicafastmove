@@ -158,8 +158,12 @@ final class MeshUploader {
 
                 budget.bytes -= layer.vertexBytes;
                 VertexBuffer vertexBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                // bind around the upload: the VAO has to exist while the vertex data is copied (1.21.x does this
+                // too); without it the later drawWithShader hands the driver an incomplete buffer and nvoglv64 dies
+                vertexBuffer.bind();
                 // VertexBuffer#upload asserts the render thread and releases the RenderedBuffer itself.
                 vertexBuffer.upload(layer.take());
+                VertexBuffer.unbind();
                 layer.releaseBuilder();
                 PlacementMesh.SortInfo sort = layer.sortState != null
                         ? new PlacementMesh.SortInfo(layer.sortState, Double.NaN, Double.NaN, Double.NaN)
