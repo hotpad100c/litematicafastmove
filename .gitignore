@@ -52,3 +52,7 @@ replay_*.log
 /build/reports/
 /build/resources/
 /build/tmp/
+
+# per-version worktrees (scripts/build-all)
+/worktrees/
+/dist/

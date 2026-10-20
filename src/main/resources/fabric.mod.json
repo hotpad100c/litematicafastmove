@@ -7,6 +7,9 @@
 	"authors": [
 		"Ryan100C"
 	],
+	"contributors": [
+		"wwwzzzxxx"
+	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
@@ -26,7 +29,7 @@
 		"litematicafastmove.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.16.8",
+		"fabricloader": "*",
 		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*",
