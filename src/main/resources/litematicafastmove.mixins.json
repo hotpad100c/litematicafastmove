@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_16",
   "client": [
     "BufferBuilderAccessor",
+    "LitematicaAlphaShaderAccessor",
     "MixinBlockModelRendererSchematic",
     "MixinChunkRendererSchematicVbo",
     "MixinClientLevel",

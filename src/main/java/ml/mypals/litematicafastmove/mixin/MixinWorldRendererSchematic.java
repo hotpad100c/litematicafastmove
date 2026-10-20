@@ -53,8 +53,8 @@ public class MixinWorldRendererSchematic {
     private void routeBlockOverlays(PoseStack matrices, Camera camera, Operation<Void> original) {
         SchematicExit.portal(() -> {
             original.call(matrices, camera);
-            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.OUTLINE, camera);
-            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.QUAD, camera);
+            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.OUTLINE, matrices, camera);
+            PlacementMeshRenderer.drawOverlays(ChunkRendererSchematicVbo.OverlayRenderType.QUAD, matrices, camera);
         });
     }
 

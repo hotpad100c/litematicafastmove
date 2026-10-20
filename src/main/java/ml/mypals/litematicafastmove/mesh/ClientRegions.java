@@ -19,7 +19,8 @@ public class ClientRegions {
 
                 LevelChunkSection[] sections = chunk.getSections();
                 for (int sy = y0 >> 4; sy <= y1 >> 4; sy++) {
-                    if (sy >= 0 && sy < sections.length && !sections[sy].isEmpty()) {
+                    // Empty sections are represented by null until the chunk has block data at this height.
+                    if (sy >= 0 && sy < sections.length && sections[sy] != null && !sections[sy].isEmpty()) {
                         return false;
                     }
                 }

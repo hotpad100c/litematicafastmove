@@ -1,12 +1,15 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
+import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
+import ml.mypals.litematicafastmove.mixin.LitematicaAlphaShaderAccessor;
 import ml.mypals.litematicafastmove.sync.MoveInterpolator;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.client.Camera;
@@ -16,6 +19,9 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -72,10 +78,16 @@ public final class PlacementMeshRenderer {
                 ? Comparator.comparingDouble(DrawSection::distanceSq).reversed()
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
-        // The ghost-block alpha comes from Litematica's own alpha shader: it calls setupAlphaShader()/enableAlphaShader()
-        // around renderBlockLayer and this wrapper draws inside that call, so the shader program must not be replaced
-        // here (there is no colour uniform to set either; 1.16.5 uses a custom shader program for that).
         layer.setupRenderState();
+        // Iris can restore its program while Litematica returns from the original layer. Select the alpha
+        // program explicitly for our detached buffers, without changing Litematica's saved program fields.
+        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        if (Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue()) {
+            int program = LitematicaAlphaShaderAccessor.fastmove$getAlphaShader().getProgram();
+            GlStateManager._glUseProgram(program);
+            GL20.glUniform1f(GL20.glGetUniformLocation(program, "alpha_multiplier"),
+                    (float) Configs.Visuals.GHOST_BLOCK_ALPHA.getDoubleValue());
+        }
         int glMode = layer.mode();
         if (Boolean.getBoolean("lfm.tint")) {
             // 1.16.5 has no RenderSystem#setShaderColor: the colour modulators are fixed-function state here
@@ -96,6 +108,7 @@ public final class PlacementMeshRenderer {
         VertexBuffer.unbind();
         RenderSystem.clearCurrentColor();
         layer.format().clearBufferState();
+        GlStateManager._glUseProgram(previousProgram);
         layer.clearRenderState();
     }
 
@@ -104,7 +117,7 @@ public final class PlacementMeshRenderer {
      * state around this (blend, alpha test, line width, polygon offset and the depth test for "render through") is set
      * up by Litematica's renderSchematicOverlay, so only what renderBlockOverlays turned off again is restored here.
      */
-    public static void drawOverlays(OverlayRenderType type, Camera camera) {
+    public static void drawOverlays(OverlayRenderType type, PoseStack viewMatrices, Camera camera) {
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -122,11 +135,21 @@ public final class PlacementMeshRenderer {
 
         if (draws.isEmpty()) return;
 
+        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousTextureUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        RenderSystem.activeTexture(GL13.GL_TEXTURE0);
+        boolean textureEnabled = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+        boolean alphaTestEnabled = GL11.glIsEnabled(GL11.GL_ALPHA_TEST);
+        // POSITION_COLOR overlays have no UVs and carry alpha below the terrain alpha-test threshold.
+        GlStateManager._glUseProgram(0);
+        RenderSystem.disableTexture();
+        RenderSystem.disableAlphaTest();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
         for (DrawSection draw : draws) {
             PoseStack matrices = new PoseStack();
+            matrices.last().pose().multiply(viewMatrices.last().pose());
             matrices.translate(draw.x(), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
@@ -138,6 +161,10 @@ public final class PlacementMeshRenderer {
         RenderSystem.clearCurrentColor();
         DefaultVertexFormat.POSITION_COLOR.clearBufferState();
         RenderSystem.disableBlend();
+        if (textureEnabled) RenderSystem.enableTexture();
+        if (alphaTestEnabled) RenderSystem.enableAlphaTest();
+        RenderSystem.activeTexture(previousTextureUnit);
+        GlStateManager._glUseProgram(previousProgram);
     }
 
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds,
