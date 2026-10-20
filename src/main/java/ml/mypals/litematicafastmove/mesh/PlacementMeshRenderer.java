@@ -126,7 +126,7 @@ public final class PlacementMeshRenderer {
     }
 
     /** Draws the detached placements' overlays, after Litematica drew its own for the same overlay type. */
-    public static void drawOverlays(OverlayRenderType type, Camera camera, Matrix4f projMatrix) {
+    public static void drawOverlays(OverlayRenderType type, PoseStack viewMatrices, Camera camera, Matrix4f projMatrix) {
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -164,6 +164,7 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             PoseStack matrices = new PoseStack();
+            matrices.mulPoseMatrix(viewMatrices.last().pose());
             matrices.translate(draw.x(), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
