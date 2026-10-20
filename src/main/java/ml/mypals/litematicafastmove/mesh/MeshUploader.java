@@ -159,7 +159,10 @@ final class MeshUploader {
 
                 budget.bytes -= layer.vertexBytes();
                 VertexBuffer vertexBuffer = new VertexBuffer();
+                // 1.17.1: upload() returns unless the buffer object exists, so bind() has to run first
+                vertexBuffer.bind();
                 vertexBuffer.upload(layer.buffer());
+                VertexBuffer.unbind();
                 PlacementMesh.SortInfo sort = null;
                 if (layer.sortState() != null) {
                     sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,
