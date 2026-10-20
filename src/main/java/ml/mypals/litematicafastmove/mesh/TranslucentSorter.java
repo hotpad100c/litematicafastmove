@@ -1,6 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
 
@@ -37,7 +38,12 @@ public class TranslucentSorter {
             builder.restoreSortState(sort.state);
             builder.setQuadSortOrigin((float) rx, (float) ry, (float) rz);
             builder.end();
-            layer.vertexBuffer().upload(builder);
+            layer.vertexBuffer().bind();
+            try {
+                layer.vertexBuffer().upload(builder);
+            } finally {
+                VertexBuffer.unbind();
+            }
             sort.lastX = rx;
             sort.lastY = ry;
             sort.lastZ = rz;
