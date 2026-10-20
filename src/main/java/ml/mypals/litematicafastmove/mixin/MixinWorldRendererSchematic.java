@@ -42,7 +42,7 @@ public class MixinWorldRendererSchematic {
                                      ProfilerFiller profiler, CompiledShaderProgram shader,
                                      CallbackInfoReturnable<Integer> cir) {
         Vec3 cameraPos = camera.getPosition();
-        PlacementMeshRenderer.renderLayer(layer, matrices, projMatrix, cameraPos.x, cameraPos.y, cameraPos.z);
+        PlacementMeshRenderer.renderLayer(layer, matrices, projMatrix, cameraPos.x, cameraPos.y, cameraPos.z, shader);
     }
 
     @Inject(method = "renderBlockOverlay", at = @At("RETURN"))

@@ -53,7 +53,10 @@ public final class PlacementMeshRenderer {
      * 顶点是区段相对坐标，绘制时用 modelView 平移到相机相对位置。
      */
     public static void renderLayer(RenderType layer, Matrix4f matrices, Matrix4f projMatrix,
-                                   double cameraX, double cameraY, double cameraZ) {
+                                   double cameraX, double cameraY, double cameraZ,
+                                   CompiledShaderProgram layerShader) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -90,8 +93,12 @@ public final class PlacementMeshRenderer {
             float alpha = (float) Configs.Visuals.GHOST_BLOCK_ALPHA.getDoubleValue();
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
         }
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         try {
-            CompiledShaderProgram shader = RenderSystem.getShader();
+            // at RETURN Litematica has already restored its own shader, so use the one it drew this layer with
+            CompiledShaderProgram shader = layerShader != null ? layerShader : RenderSystem.getShader();
             if (shader != null) {
                 RenderSystem.setupShaderLights(shader);
             }
@@ -118,7 +125,7 @@ public final class PlacementMeshRenderer {
     private static void draw(VertexBuffer buffer, Matrix4f modelView, Matrix4f projMatrix, CompiledShaderProgram shader,
                              double ox, double oy, double oz) {
         if (shader == null) return;
-        Matrix4f translated = new Matrix4f(modelView).translate((float) ox, (float) oy, (float) oz);
+        Matrix4f translated = new Matrix4f(modelView).translate((float) ox + Integer.getInteger("lfm.shift", 0), (float) oy, (float) oz);
         buffer.bind();
         buffer.drawWithShader(translated, projMatrix, shader);
         VertexBuffer.unbind();
@@ -175,7 +182,10 @@ public final class PlacementMeshRenderer {
 
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds, SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Frustum fr = frustum;
+        // Litematica 0.21.7 only refreshes the frustum when the camera moves on its own; after a teleport the
+        // captured frustum can stay stale, which silently culls every section (draws happen, nothing on screen).
+        // The mesh is small, so skip culling here instead of trusting a stale frustum.
+        Frustum fr = null;
         int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
