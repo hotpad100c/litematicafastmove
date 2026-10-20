@@ -71,7 +71,11 @@ These are intentional removals, not silent losses:
   Opaque layers do not care; for translucent geometry the detached sections are sorted back to front among
   themselves.
 
-## Not verified here
+## Runtime verification (2026-10-21)
 
-`./gradlew build` is green. No client was started from this worktree (machine policy: one client at a time, and a
-client run has to be announced). Mixin application and in-game behaviour still need a `runClient` smoke test.
+The 1.0.1+1.20.4 player jar was checked in ordinary Fabric with shader packs off and BSL on,
+including overlays and placement movement. The current layer shader must be selected after
+`layer.setupRenderState()` inside the EXIT portal. Capturing `RenderSystem.getShader()` before
+calling the original schematic pass was incorrect and caused missing geometry or white materials.
+The earlier 1.0.0 pass record is superseded. See [packaging and validation](BUILDING.zh-CN.md)
+and the linked performance report for conditions and limits.

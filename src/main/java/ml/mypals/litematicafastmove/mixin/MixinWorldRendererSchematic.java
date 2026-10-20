@@ -3,8 +3,6 @@ package ml.mypals.litematicafastmove.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import net.minecraft.client.renderer.ShaderInstance;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo;
 import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
@@ -39,10 +37,9 @@ public class MixinWorldRendererSchematic {
     private int routeBlockLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
                                 Operation<Integer> original) {
         int[] count = {0};
-        ShaderInstance layerShader = RenderSystem.getShader();
         SchematicExit.portal(() -> {
             count[0] = original.call(layer, matrices, camera, projMatrix);
-            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix, layerShader);
+            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix);
         });
         return count[0];
     }
