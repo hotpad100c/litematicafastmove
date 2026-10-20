@@ -2,6 +2,8 @@ package ml.mypals.litematicafastmove.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.minecraft.client.renderer.ShaderInstance;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
 import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
@@ -23,6 +25,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -35,11 +38,20 @@ public class MixinWorldRendererSchematic {
      * 0.18.3 draws one {@link RenderType} at a time instead of collecting a render map, so the detached
      * placement meshes are appended right after Litematica finished that same layer.
      */
+    @Unique private static ShaderInstance lfm$layerShader;
+
+    /** remember the shader this layer is drawn with: renderBlockLayer resets it before returning */
+    @Inject(method = "renderBlockLayer", at = @At("HEAD"))
+    private void lfm$captureLayerShader(RenderType layer, Matrix4f matrices, Camera camera, Matrix4f projMatrix,
+                                        CallbackInfoReturnable<Integer> cir) {
+        lfm$layerShader = RenderSystem.getShader();
+    }
+
     @Inject(method = "renderBlockLayer", at = @At("RETURN"))
     private void appendDetachedDraws(RenderType layer, Matrix4f matrices, Camera camera, Matrix4f projMatrix,
                                      CallbackInfoReturnable<Integer> cir) {
         Vec3 cameraPos = camera.getPosition();
-        PlacementMeshRenderer.renderLayer(layer, matrices, projMatrix, cameraPos.x, cameraPos.y, cameraPos.z);
+        PlacementMeshRenderer.renderLayer(layer, matrices, projMatrix, cameraPos.x, cameraPos.y, cameraPos.z, null);
     }
 
     @Inject(method = "renderBlockOverlay", at = @At("RETURN"))
