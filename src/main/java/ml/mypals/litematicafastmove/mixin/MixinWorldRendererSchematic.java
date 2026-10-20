@@ -37,9 +37,10 @@ public class MixinWorldRendererSchematic {
     private int routeBlockLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
                                 Operation<Integer> original) {
         int[] count = {0};
+        net.minecraft.client.renderer.ShaderInstance layerShader = com.mojang.blaze3d.systems.RenderSystem.getShader();
         SchematicExit.portal(() -> {
             count[0] = original.call(layer, matrices, camera, projMatrix);
-            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix);
+            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix, layerShader);
         });
         return count[0];
     }

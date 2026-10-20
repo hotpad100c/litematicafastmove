@@ -159,7 +159,12 @@ final class MeshUploader {
 
                 budget.bytes -= layer.vertexBytes();
                 VertexBuffer vertexBuffer = new VertexBuffer();
+                // 1.18.2: VertexBuffer#upload returns immediately unless the VBO already exists, so bind() has to run
+                // first - otherwise the upload is a silent no-op, the element count stays 0 and drawChunkLayer()
+                // returns without drawing anything.
+                vertexBuffer.bind();
                 vertexBuffer.upload(layer.buffer());
+                VertexBuffer.unbind();
                 PlacementMesh.SortInfo sort = null;
                 if (layer.sortState() != null) {
                     sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,

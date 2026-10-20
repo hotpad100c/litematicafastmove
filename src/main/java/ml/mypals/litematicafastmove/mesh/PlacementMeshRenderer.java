@@ -46,7 +46,10 @@ public final class PlacementMeshRenderer {
      * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
-    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
+                                   ShaderInstance shaderOverride) {
+        // diagnostic: -Dlfm.nodraw=true draws nothing, so the frame shows only Litematica's own rendering
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -75,7 +78,9 @@ public final class PlacementMeshRenderer {
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
         layer.setupRenderState();
-        ShaderInstance shader = RenderSystem.getShader();
+        // the shader current after renderBlockLayer belongs to Litematica's restored state; the caller captures
+        // the one this layer is drawn with before the call
+        ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
         BufferUploader.reset();
 
         boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
@@ -84,27 +89,27 @@ public final class PlacementMeshRenderer {
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
         }
 
-        // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks. The shader colour has to be
+        // set before apply(): setShaderColor only stores the value and the ColorModulator uniform is uploaded by apply().
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         initShader(shader, matrices, projMatrix);
         RenderSystem.setupShaderLights(shader);
         shader.apply();
 
         Uniform chunkOffset = shader.CHUNK_OFFSET;
-        boolean startedDrawing = false;
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
-                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.set((float) draw.x() + Integer.getInteger("lfm.shift", 0), (float) draw.y(), (float) draw.z());
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
-            // 1.17.1/1.18.2: VertexBuffer#bind only binds the GL buffers; the VAO and the vertex format state are
-            // bound by drawChunkLayer. Calling draw() here draws with no array object bound, so every call is an
-            // invalid operation and the section renders as nothing. Litematica's own WorldRendererSchematic uses
-            // exactly this pair for its chunk buffers.
+            // 1.17.1/1.18.2: bind() binds the GL buffers, drawChunkLayer() binds the array object and the vertex format;
+            // draw() on its own would issue the draw with no array object bound.
             buffer.bind();
             buffer.drawChunkLayer();
-            startedDrawing = true;
         }
 
         if (renderAsTranslucent) {
@@ -115,9 +120,6 @@ public final class PlacementMeshRenderer {
         }
 
         shader.clear();
-        if (startedDrawing) {
-            layer.format().clearBufferState();
-        }
         VertexBuffer.unbind();
         VertexBuffer.unbindVertexArray();
         layer.clearRenderState();
