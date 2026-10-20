@@ -43,6 +43,8 @@ public final class PlacementMeshRenderer {
      * {@code WorldRendererSchematic#renderBlockLayer} does.
      */
     public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -75,10 +77,15 @@ public final class PlacementMeshRenderer {
         // here (there is no colour uniform to set either; 1.16.5 uses a custom shader program for that).
         layer.setupRenderState();
         int glMode = layer.mode();
+        if (Boolean.getBoolean("lfm.tint")) {
+            // 1.16.5 has no RenderSystem#setShaderColor: the colour modulators are fixed-function state here
+            RenderSystem.color4f(1.0f, 0.0f, 1.0f, 1.0f);
+
+        }
 
         for (DrawSection draw : draws) {
             matrices.pushPose();
-            matrices.translate(draw.x(), draw.y(), draw.z());
+            matrices.translate(draw.x() + Integer.getInteger("lfm.shift", 0), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
             layer.format().setupBufferState(0L);

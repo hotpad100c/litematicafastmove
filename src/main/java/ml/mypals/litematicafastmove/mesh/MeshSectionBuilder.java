@@ -1,6 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import fi.dy.masa.litematica.config.Configs;
@@ -360,10 +361,14 @@ public final class MeshSectionBuilder {
                                    BlockModelRendererSchematic blockRenderer,
                                    java.util.function.Function<RenderType, BufferBuilder> buffers) {
         try {
+            // diagnostics: -Dlfm.tint=true paints the mesh magenta at the vertex level, which survives any shader
+            boolean tint = Boolean.getBoolean("lfm.tint");
             FluidState fluidState = state.getFluidState();
             if (fluidState.isEmpty() == false) {
                 RenderType layer = net.minecraft.client.renderer.ItemBlockRenderTypes.getRenderLayer(fluidState);
-                Minecraft.getInstance().getBlockRenderer().renderLiquid(pos, view, buffers.apply(layer), fluidState);
+                VertexConsumer consumer = buffers.apply(layer);
+                if (tint) consumer = new DebugTintConsumer(consumer);
+                Minecraft.getInstance().getBlockRenderer().renderLiquid(pos, view, consumer, fluidState);
             }
 
             if (state.getRenderShape() == RenderShape.MODEL) {
@@ -372,7 +377,9 @@ public final class MeshSectionBuilder {
                     PoseStack matrices = new PoseStack();
                     matrices.translate(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
                     RenderType layer = net.minecraft.client.renderer.ItemBlockRenderTypes.getChunkRenderType(state);
-                    blockRenderer.renderModel(view, model, state, pos, matrices, buffers.apply(layer), state.getSeed(pos));
+                    VertexConsumer consumer = buffers.apply(layer);
+                    if (tint) consumer = new DebugTintConsumer(consumer);
+                    blockRenderer.renderModel(view, model, state, pos, matrices, consumer, state.getSeed(pos));
                 }
             }
         } catch (Throwable e) {
