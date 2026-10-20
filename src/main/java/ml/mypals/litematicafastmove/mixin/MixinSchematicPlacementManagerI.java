@@ -30,7 +30,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
 
     @Shadow abstract void onPostPlacementChange(SchematicPlacement placement);
 
-    @Shadow public abstract void markChunkForRebuild(int cx, int cz);
+    @Shadow public abstract void markChunkForRebuild(ChunkPos pos);
 
     @Unique private PlacementSnapshot litematicafastmove$preChange;
     @Unique private boolean litematicafastmove$committing;
@@ -149,7 +149,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
     @Unique
     private void litematicafastmove$rebuildSkipped() {
         for (ChunkPos pos : PendingMoveTracker.drainUnfrozenSkipped()) {
-            this.markChunkForRebuild(pos.x, pos.z);
+            this.markChunkForRebuild(new ChunkPos(pos.x, pos.z));
         }
     }
 }
