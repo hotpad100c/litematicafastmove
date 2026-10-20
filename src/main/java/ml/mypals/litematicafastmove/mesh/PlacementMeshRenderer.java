@@ -46,8 +46,7 @@ public final class PlacementMeshRenderer {
      * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
-    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
-                                   ShaderInstance shaderOverride) {
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
         // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
         if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
@@ -78,9 +77,9 @@ public final class PlacementMeshRenderer {
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
         layer.setupRenderState();
-        // Litematica restores its own shader before returning from renderBlockLayer, so a shader read
-        // after the call is not the one this layer was drawn with (wrong format -> nothing drawn)
-        ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
+        // Select the shader after this layer has installed its render state inside the EXIT portal.
+        // The shader active before renderBlockLayer can belong to a different world pass.
+        ShaderInstance shader = RenderSystem.getShader();
         BufferUploader.reset();
 
         boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
@@ -98,7 +97,6 @@ public final class PlacementMeshRenderer {
         shader.apply();
 
         Uniform chunkOffset = shader.CHUNK_OFFSET;
-        boolean startedDrawing = false;
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
@@ -106,18 +104,10 @@ public final class PlacementMeshRenderer {
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
-            // pre-1.21 VertexBuffer#draw only issues glDrawElements: the vertex format state (the VAO and the
-            // attribute pointers) has to be bound around it, otherwise the draw is invalid and can take the
-            // GL driver down (0xC0000409 inside nvoglv64)
-            layer.format().setupBufferState();
+            // The uploaded VAO owns its attribute pointers; keep the shader active across sections.
             buffer.bind();
-            // VertexBuffer#draw() re-applies whatever shader RenderSystem currently holds; after
-            // renderBlockLayer that is Litematica's restored shader, whose vertex layout does not match this
-            // buffer, so parts of the mesh come out scattered. Draw with the layer's own shader instead.
-            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
+            buffer.draw();
             VertexBuffer.unbind();
-            layer.format().clearBufferState();
-            startedDrawing = true;
         }
 
         if (renderAsTranslucent) {
@@ -128,15 +118,12 @@ public final class PlacementMeshRenderer {
         }
 
         shader.clear();
-        if (startedDrawing) {
-            layer.format().clearBufferState();
-        }
         VertexBuffer.unbind();
         layer.clearRenderState();
     }
 
     /** Draws the detached placements' overlays, after Litematica drew its own for the same overlay type. */
-    public static void drawOverlays(OverlayRenderType type, Camera camera, Matrix4f projMatrix) {
+    public static void drawOverlays(OverlayRenderType type, PoseStack viewMatrices, Camera camera, Matrix4f projMatrix) {
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -174,6 +161,7 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             PoseStack matrices = new PoseStack();
+            matrices.mulPoseMatrix(viewMatrices.last().pose());
             matrices.translate(draw.x(), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
