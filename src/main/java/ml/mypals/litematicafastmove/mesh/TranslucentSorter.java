@@ -1,6 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
@@ -78,7 +79,12 @@ public class TranslucentSorter {
         while ((resorted = RESORTED.poll()) != null) {
             PlacementMesh.GpuLayer layer = resorted.layer();
             // upload replaces only the index buffer (the RenderedBuffer is index-only)
-            layer.vertexBuffer.upload(resorted.buffer());
+            layer.vertexBuffer.bind();
+            try {
+                layer.vertexBuffer.upload(resorted.buffer());
+            } finally {
+                VertexBuffer.unbind();
+            }
             resorted.builder().release();
             layer.sort.state = resorted.state();
             layer.sort.lastX = resorted.x();
