@@ -3,6 +3,8 @@ package ml.mypals.litematicafastmove.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.minecraft.client.renderer.ShaderInstance;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo;
 import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
@@ -39,7 +41,10 @@ public class MixinWorldRendererSchematic {
         int[] count = {0};
         SchematicExit.portal(() -> {
             count[0] = original.call(layer, matrices, camera, projMatrix);
-            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix);
+            // Litematica restores its own shader before returning: only the value at RETURN is the shader this layer
+            // was actually drawn with (at HEAD it is still the previous layer's)
+            ShaderInstance returnShader = RenderSystem.getShader();
+            PlacementMeshRenderer.drawLayer(layer, matrices, camera, projMatrix, returnShader);
         });
         return count[0];
     }
