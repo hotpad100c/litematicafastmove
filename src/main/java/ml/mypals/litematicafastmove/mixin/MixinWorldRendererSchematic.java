@@ -54,7 +54,7 @@ public class MixinWorldRendererSchematic {
                                    Matrix4f projMatrix, Operation<Void> original) {
         SchematicExit.portal(() -> {
             original.call(type, matrices, camera, projMatrix);
-            PlacementMeshRenderer.drawOverlays(type, camera, projMatrix);
+            PlacementMeshRenderer.drawOverlays(type, matrices, camera, projMatrix);
         });
     }
 
