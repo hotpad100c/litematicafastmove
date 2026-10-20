@@ -30,7 +30,7 @@ jobs:
         working-directory: .exit-source
         run: |
           chmod +x ./gradlew
-          ./gradlew :fabric:publishToMavenLocal --console=plain -Porg.gradle.java.installations.fromEnv=JAVA_HOME_16_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
+          ./gradlew :fabric:publishToMavenLocal --init-script ../scripts/exit-publication.init.gradle --console=plain -Porg.gradle.java.installations.fromEnv=JAVA_HOME_16_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
       - name: Build LFM
         run: |
           chmod +x ./gradlew
