@@ -47,6 +47,8 @@ public final class PlacementMeshRenderer {
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
     public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -85,6 +87,9 @@ public final class PlacementMeshRenderer {
         }
 
         // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         initShader(shader, matrices, projMatrix);
         RenderSystem.setupShaderLights(shader);
         shader.apply();
@@ -94,13 +99,20 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
-                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.set((float) draw.x() + Integer.getInteger("lfm.shift", 0), (float) draw.y(), (float) draw.z());
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
+            // VertexBuffer#draw only issues the GL call: the vertex format (VAO + attribute pointers) has to be
+            // bound around it, otherwise the driver reads garbage and the geometry lands right in front of the camera
+            layer.format().setupBufferState();
             buffer.bind();
-            buffer.draw();
+            // VertexBuffer#draw() re-applies whatever shader RenderSystem currently holds; after
+            // renderBlockLayer that is Litematica's restored shader, whose vertex layout does not match this
+            // buffer, so parts of the mesh come out scattered. Draw with the layer's own shader instead.
+            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
             VertexBuffer.unbind();
+            layer.format().clearBufferState();
             startedDrawing = true;
         }
 
@@ -207,7 +219,10 @@ public final class PlacementMeshRenderer {
             for (PlacementMesh.GpuSection section : mesh.active.values()) {
                 if (sameBuild) {
                     PlacementMesh.Clip required = LayerRangeClip.compute(range, accessor.minPos, accessor.maxPos, section.origin(), delta);
-                    if (required != null && required.isEmpty()) continue;
+                    // NB: do not skip on an "empty" clip - with the layer-range clip stale the section would be
+                    // dropped for cameras far from where the mesh was first built (empty west/east/north views)
+                    // while the geometry itself is fine.
+
                     if (canRebuild && (section.hasBlocks() || !section.layers().isEmpty()) && !Objects.equals(required, section.clip()) &&
                         !mesh.clipRebuildPending.contains(section.key())) {
                         if (clipKeys == null) clipKeys = new HashSet<>();
