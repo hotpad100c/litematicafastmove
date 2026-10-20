@@ -101,9 +101,6 @@ public final class PlacementMeshRenderer {
             ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
             RenderSystem.setupShaderLights(shader);
             Matrix4f modelView = new Matrix4f(matrices);
-            // bind the vertex format (VAO + attribute pointers) around our draws; drawWithShader alone leaves the
-            // driver with an incomplete buffer and can crash inside nvoglv64
-            layer.format().setupBufferState();
 
             forEachVisibleSection(cameraX, cameraY, cameraZ, false, (section, ox, oy, oz) -> {
                 for (PlacementMesh.GpuLayer gpuLayer : section.layers()) {
@@ -115,7 +112,6 @@ public final class PlacementMeshRenderer {
             for (TranslucentDraw draw : translucentDraws) {
                 draw(draw.layer().vertexBuffer, modelView, projMatrix, shader, draw.ox(), draw.oy(), draw.oz());
             }
-            layer.format().clearBufferState();
         } finally {
             if (ghost) {
                 RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);

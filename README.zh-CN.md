@@ -73,3 +73,5 @@
 
 - Ryan100C（作者）
 - [wwwzzzxxx](https://github.com/wwwzzzxxx)：1.16.5 – 1.21.11 各版本移植、渲染延迟、基准测试
+
+打包、依赖配对和成品核验：见 [打包说明](BUILDING.zh-CN.md)。
