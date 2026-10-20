@@ -35,14 +35,17 @@ public class MixinLitematicaRenderer {
     }
 
     /**
-     * 1.21.8 的实体 / 方块实体还是 {@code MultiBufferSource}：把 Litematica 自己的两个 immediate buffer
-     * 换成 EXIT 通道的 batch，它们就会在关卡渲染末尾（着色器包之后）一起画。
+     * Litematica requires the concrete BufferSource class, while EXIT's deferred batch only implements
+     * MultiBufferSource. Keep the original sources and flush their draws inside the routed portal.
      */
     @WrapOperation(method = "piecewiseRenderEntities", at = @At(value = "INVOKE",
             target = "Lfi/dy/masa/litematica/render/schematic/WorldRendererSchematic;renderEntities(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;FLnet/minecraft/util/profiling/ProfilerFiller;)V"))
     private void routeEntities(WorldRendererSchematic renderer, Camera camera, Frustum frustum, PoseStack matrices,
                                MultiBufferSource.BufferSource buffers, float partialTicks, ProfilerFiller profiler, Operation<Void> original) {
-        original.call(renderer, camera, frustum, matrices, SchematicExit.batch(buffers), partialTicks, profiler);
+        SchematicExit.portal(() -> {
+            original.call(renderer, camera, frustum, matrices, buffers, partialTicks, profiler);
+            buffers.endBatch();
+        });
     }
 
     @WrapOperation(method = "piecewiseRenderBlockEntities", at = @At(value = "INVOKE",
@@ -50,8 +53,11 @@ public class MixinLitematicaRenderer {
     private void routeBlockEntities(WorldRendererSchematic renderer, Camera camera, Frustum frustum, PoseStack matrices,
                                     MultiBufferSource.BufferSource buffers, MultiBufferSource.BufferSource noCullBuffers,
                                     float partialTicks, ProfilerFiller profiler, Operation<Void> original) {
-        original.call(renderer, camera, frustum, matrices, SchematicExit.batch(buffers),
-                SchematicExit.batch(noCullBuffers), partialTicks, profiler);
+        SchematicExit.portal(() -> {
+            original.call(renderer, camera, frustum, matrices, buffers, noCullBuffers, partialTicks, profiler);
+            buffers.endBatch();
+            if (noCullBuffers != buffers) noCullBuffers.endBatch();
+        });
     }
 
     @WrapMethod(method = "piecewiseRenderOverlay")
