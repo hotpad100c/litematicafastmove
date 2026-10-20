@@ -46,7 +46,10 @@ public final class PlacementMeshRenderer {
      * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
-    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
+                                   ShaderInstance shaderOverride) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -75,7 +78,9 @@ public final class PlacementMeshRenderer {
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
         layer.setupRenderState();
-        ShaderInstance shader = RenderSystem.getShader();
+        // Litematica restores its own shader before returning from renderBlockLayer, so a shader read
+        // after the call is not the one this layer was drawn with (wrong format -> nothing drawn)
+        ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
         BufferUploader.reset();
 
         boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
@@ -85,6 +90,9 @@ public final class PlacementMeshRenderer {
         }
 
         // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         initShader(shader, matrices, projMatrix);
         RenderSystem.setupShaderLights(shader);
         shader.apply();
@@ -94,13 +102,21 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
-                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.set((float) draw.x() + Integer.getInteger("lfm.shift", 0), (float) draw.y(), (float) draw.z());
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
+            // pre-1.21 VertexBuffer#draw only issues glDrawElements: the vertex format state (the VAO and the
+            // attribute pointers) has to be bound around it, otherwise the draw is invalid and can take the
+            // GL driver down (0xC0000409 inside nvoglv64)
+            layer.format().setupBufferState();
             buffer.bind();
-            buffer.draw();
+            // VertexBuffer#draw() re-applies whatever shader RenderSystem currently holds; after
+            // renderBlockLayer that is Litematica's restored shader, whose vertex layout does not match this
+            // buffer, so parts of the mesh come out scattered. Draw with the layer's own shader instead.
+            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
             VertexBuffer.unbind();
+            layer.format().clearBufferState();
             startedDrawing = true;
         }
 
@@ -187,7 +203,8 @@ public final class PlacementMeshRenderer {
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds,
                                               SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Frustum fr = frustum;
+        // a stale frustum (captured before a teleport) silently culls every section: draws happen, nothing shows
+        Frustum fr = null;
         int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
@@ -207,7 +224,10 @@ public final class PlacementMeshRenderer {
             for (PlacementMesh.GpuSection section : mesh.active.values()) {
                 if (sameBuild) {
                     PlacementMesh.Clip required = LayerRangeClip.compute(range, accessor.minPos, accessor.maxPos, section.origin(), delta);
-                    if (required != null && required.isEmpty()) continue;
+                    // NB: do not skip on an "empty" clip - with the layer-range clip stale the section would be
+                    // dropped for cameras far from where the mesh was first built (empty west/east/north views)
+                    // while the geometry itself is fine.
+
                     if (canRebuild && (section.hasBlocks() || !section.layers().isEmpty()) && !Objects.equals(required, section.clip()) &&
                         !mesh.clipRebuildPending.contains(section.key())) {
                         if (clipKeys == null) clipKeys = new HashSet<>();
