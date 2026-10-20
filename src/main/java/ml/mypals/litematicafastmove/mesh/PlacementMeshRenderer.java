@@ -98,7 +98,6 @@ public final class PlacementMeshRenderer {
         shader.apply();
 
         Uniform chunkOffset = shader.CHUNK_OFFSET;
-        boolean startedDrawing = false;
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
@@ -106,15 +105,10 @@ public final class PlacementMeshRenderer {
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
-            // pre-1.20.5 VertexBuffer#draw only issues the GL call: the vertex format (VAO + attribute pointers)
-            // has to be bound around it and the layer shader has to be applied, otherwise the driver gets an
-            // incomplete buffer and dies in nvoglv64 (0xC0000409)
-            layer.format().setupBufferState();
+            // The uploaded VAO owns its attribute pointers; keep the shader active across sections.
             buffer.bind();
-            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
+            buffer.draw();
             VertexBuffer.unbind();
-            layer.format().clearBufferState();
-            startedDrawing = true;
         }
 
         if (renderAsTranslucent) {
@@ -125,15 +119,12 @@ public final class PlacementMeshRenderer {
         }
 
         shader.clear();
-        if (startedDrawing) {
-            layer.format().clearBufferState();
-        }
         VertexBuffer.unbind();
         layer.clearRenderState();
     }
 
     /** Draws the detached placements' overlays, after Litematica drew its own for the same overlay type. */
-    public static void drawOverlays(OverlayRenderType type, Camera camera, Matrix4f projMatrix) {
+    public static void drawOverlays(OverlayRenderType type, PoseStack viewMatrices, Camera camera, Matrix4f projMatrix) {
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -171,6 +162,7 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             PoseStack matrices = new PoseStack();
+            matrices.mulPoseMatrix(viewMatrices.last().pose());
             matrices.translate(draw.x(), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
