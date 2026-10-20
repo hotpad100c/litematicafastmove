@@ -46,7 +46,10 @@ public final class PlacementMeshRenderer {
      * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
-    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
+                                   ShaderInstance shaderOverride) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -69,13 +72,20 @@ public final class PlacementMeshRenderer {
 
         if (draws.isEmpty()) return;
 
+
         // Litematica draws translucent chunks back to front
         draws.sort(translucent
                 ? Comparator.comparingDouble(DrawSection::distanceSq).reversed()
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
         layer.setupRenderState();
-        ShaderInstance shader = RenderSystem.getShader();
+        // Litematica restores its own shader before returning from renderBlockLayer, so a shader read
+        // after the call is not the one this layer was drawn with (wrong format -> nothing drawn)
+        ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
+        // the lightmap sampler must be bound while the block shader runs, otherwise every face is multiplied
+        // by a black light value (geometry drawn, but pitch black)
+        Minecraft mc = Minecraft.getInstance();
+        mc.gameRenderer.lightTexture().turnOnLightLayer();
         BufferUploader.reset();
 
         boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
@@ -85,6 +95,9 @@ public final class PlacementMeshRenderer {
         }
 
         // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         initShader(shader, matrices, projMatrix);
         RenderSystem.setupShaderLights(shader);
         shader.apply();
@@ -94,7 +107,7 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
-                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.set((float) draw.x() + Integer.getInteger("lfm.shift", 0), (float) draw.y(), (float) draw.z());
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
@@ -120,6 +133,7 @@ public final class PlacementMeshRenderer {
         }
         VertexBuffer.unbind();
         VertexBuffer.unbindVertexArray();
+        mc.gameRenderer.lightTexture().turnOffLightLayer();
         layer.clearRenderState();
     }
 
@@ -191,7 +205,8 @@ public final class PlacementMeshRenderer {
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds,
                                               SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Frustum fr = frustum;
+        // a stale frustum (captured before a teleport) silently culls every section: draws happen, nothing shows
+        Frustum fr = null;
         int renderDistance = (Minecraft.getInstance().options.renderDistance + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
