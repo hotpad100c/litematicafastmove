@@ -9,3 +9,5 @@ For setup instructions, please see the [Fabric Documentation page](https://docs.
 ## License
 
 This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.
+
+打包、依赖配对和成品核验：见 [打包说明](BUILDING.zh-CN.md)。
