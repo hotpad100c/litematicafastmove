@@ -11,15 +11,14 @@ EXIT 尚未发布到公共 Maven，LFM 使用 `mavenLocal()` 获取它。因此�
 以下为 PowerShell 中构建 1.20.4 的示例，在一个新的工作目录操作。`JAVA_HOME` 应已指向本机 JDK 25，并安装 JDK 17（或允许 Gradle toolchain 下载）。
 
 ```powershell
+git clone --branch port/1.20.4 https://github.com/hotpad100c/litematicafastmove.git lfm-src
 git clone --branch port/1.20.4 https://github.com/hotpad100c/emergency-exit.git exit-src
 Set-Location exit-src
 # 重建本次配对版本：将下面的 SHA 换成 LFM workflow 中 EXIT checkout 的 ref
 git checkout 8638c89aa33175de0b26fa19b9e2ed98b97c0fef
-.\gradlew.bat :fabric:publishToMavenLocal --console=plain
+.\gradlew.bat :fabric:publishToMavenLocal --init-script ..\lfm-src\scripts\exit-publication.init.gradle --console=plain
 if ($LASTEXITCODE -ne 0) { throw 'EXIT build failed' }
-Set-Location ..
-git clone --branch port/1.20.4 https://github.com/hotpad100c/litematicafastmove.git lfm-src
-Set-Location lfm-src
+Set-Location ..\lfm-src
 .\gradlew.bat build --console=plain
 if ($LASTEXITCODE -ne 0) { throw 'LFM build failed' }
 python scripts/verify-package.py
@@ -27,6 +26,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
 ```
 
 Linux/macOS 使用 `./gradlew` 和 `python3`。首次构建需要联网下载依赖；`--offline` 只适用于已完整缓存依赖的机器。旧版 `scripts/build-all.sh` 仍要求提前把所有 EXIT 版本发布到本地 Maven，缺少依赖会跳过并返回失败。
+
+`scripts/exit-publication.init.gradle` 为旧 EXIT 分支区分 named 与 remapped 源码包的 classifier，避免发布时出现两个 `sources` artifact。该兼容处理只影响开发源码包分类，不改变成品代码；直接发布某些旧分支而省略此参数会失败。
 
 ## 哪个 jar 可以分发
 
