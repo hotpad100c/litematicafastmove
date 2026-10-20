@@ -1,30 +1,48 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
-
 name: build
-on: [pull_request, push]
-
+on: [pull_request, push, workflow_dispatch]
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - name: checkout repository
+      - name: Checkout LFM
         uses: actions/checkout@v6
-      - name: validate gradle wrapper
+      - name: Checkout matching EXIT
+        uses: actions/checkout@v6
+        with:
+          repository: hotpad100c/emergency-exit
+          ref: eda15d51c78cfced5141f0068612953164154482
+          path: .exit-source
+      - name: Validate Gradle wrappers
         uses: gradle/actions/wrapper-validation@v6
-      - name: setup jdk
+      - name: Install compile toolchains and Gradle JDK
         uses: actions/setup-java@v5
         with:
-          java-version: '25'
-          distribution: 'microsoft'
-      - name: make gradle wrapper executable
-        run: chmod +x ./gradlew
-      - name: build
-        run: ./gradlew build
-      - name: capture build artifacts
+          distribution: temurin
+          java-version: |
+            16
+            17
+            21
+            25
+      - name: Publish EXIT into this runner's local Maven
+        working-directory: .exit-source
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :fabric:publishToMavenLocal --console=plain -Porg.gradle.java.installations.fromEnv=JAVA_HOME_16_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
+      - name: Build LFM
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --console=plain
+      - name: Verify player jar and nested EXIT
+        run: python3 scripts/verify-package.py
+      - name: Upload verified player package
         uses: actions/upload-artifact@v7
         with:
-          name: Artifacts
-          path: build/libs/
+          name: LFM-1.16.5
+          if-no-files-found: error
+          path: |
+            build/libs/litematicafastmove-1.0.0+1.16.5.jar
+            build/libs/checksums.sha256
+            build/libs/package-verification.json
