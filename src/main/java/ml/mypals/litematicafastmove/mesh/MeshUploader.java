@@ -159,7 +159,10 @@ final class MeshUploader {
 
                 budget.bytes -= layer.vertexBytes();
                 VertexBuffer vertexBuffer = new VertexBuffer();
+                // bind around the upload: the VAO has to exist while the vertex data is copied
+                vertexBuffer.bind();
                 vertexBuffer.upload(layer.buffer());
+                VertexBuffer.unbind();
                 PlacementMesh.SortInfo sort = null;
                 if (layer.sortState() != null) {
                     sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,

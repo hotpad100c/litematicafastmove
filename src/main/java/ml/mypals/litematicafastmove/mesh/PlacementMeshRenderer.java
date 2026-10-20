@@ -46,7 +46,10 @@ public final class PlacementMeshRenderer {
      * Appends the detached placement meshes of one block layer, right after Litematica drew its own chunks for it.
      * Uses the same shader, vertex format and chunk offset uniform as {@code WorldRendererSchematic#renderBlockLayer}.
      */
-    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix) {
+    public static void drawLayer(RenderType layer, PoseStack matrices, Camera camera, Matrix4f projMatrix,
+                                   ShaderInstance shaderOverride) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -75,7 +78,9 @@ public final class PlacementMeshRenderer {
                 : Comparator.comparingDouble(DrawSection::distanceSq));
 
         layer.setupRenderState();
-        ShaderInstance shader = RenderSystem.getShader();
+        // the shader current after renderBlockLayer belongs to Litematica's restored state; the caller
+        // captures the one this layer is drawn with before the call
+        ShaderInstance shader = shaderOverride != null ? shaderOverride : RenderSystem.getShader();
         BufferUploader.reset();
 
         boolean renderAsTranslucent = Configs.Visuals.RENDER_BLOCKS_AS_TRANSLUCENT.getBooleanValue();
@@ -85,6 +90,9 @@ public final class PlacementMeshRenderer {
         }
 
         // Same uniforms WorldRendererSchematic#initShader sets for Litematica's own chunks
+        if (Boolean.getBoolean("lfm.tint")) {
+            RenderSystem.setShaderColor(1.0f, 0.0f, 1.0f, 1.0f);
+        }
         initShader(shader, matrices, projMatrix);
         RenderSystem.setupShaderLights(shader);
         shader.apply();
@@ -94,13 +102,18 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
-                chunkOffset.set((float) draw.x(), (float) draw.y(), (float) draw.z());
+                chunkOffset.set((float) draw.x() + Integer.getInteger("lfm.shift", 0), (float) draw.y(), (float) draw.z());
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
+            // pre-1.20.5 VertexBuffer#draw only issues the GL call: the vertex format (VAO + attribute pointers)
+            // has to be bound around it and the layer shader has to be applied, otherwise the driver gets an
+            // incomplete buffer and dies in nvoglv64 (0xC0000409)
+            layer.format().setupBufferState();
             buffer.bind();
-            buffer.draw();
+            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
             VertexBuffer.unbind();
+            layer.format().clearBufferState();
             startedDrawing = true;
         }
 
