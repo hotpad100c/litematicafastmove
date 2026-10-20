@@ -95,7 +95,6 @@ public final class PlacementMeshRenderer {
         shader.apply();
 
         Uniform chunkOffset = shader.CHUNK_OFFSET;
-        boolean startedDrawing = false;
 
         for (DrawSection draw : draws) {
             if (chunkOffset != null) {
@@ -103,17 +102,13 @@ public final class PlacementMeshRenderer {
                 chunkOffset.upload();
             }
             VertexBuffer buffer = draw.layer().vertexBuffer();
-            // VertexBuffer#draw only issues the GL call: the vertex format (VAO + attribute pointers) has to be
-            // bound around it, otherwise the driver reads garbage and the geometry lands right in front of the camera
-            layer.format().setupBufferState();
+            // Upload configured this buffer's VAO. Changing attribute pointers before binding it changes the
+            // previous VAO (or VAO 0), not this buffer, and is invalid in a core OpenGL context.
             buffer.bind();
-            // VertexBuffer#draw() re-applies whatever shader RenderSystem currently holds; after
-            // renderBlockLayer that is Litematica's restored shader, whose vertex layout does not match this
-            // buffer, so parts of the mesh come out scattered. Draw with the layer's own shader instead.
-            buffer.drawWithShader(new Matrix4f(matrices.last().pose()), projMatrix, shader);
+            // Keep the shader active across sections: drawWithShader clears it after each draw, which would
+            // make the next ChunkOffset upload run without an active program.
+            buffer.draw();
             VertexBuffer.unbind();
-            layer.format().clearBufferState();
-            startedDrawing = true;
         }
 
         if (renderAsTranslucent) {
@@ -124,15 +119,12 @@ public final class PlacementMeshRenderer {
         }
 
         shader.clear();
-        if (startedDrawing) {
-            layer.format().clearBufferState();
-        }
         VertexBuffer.unbind();
         layer.clearRenderState();
     }
 
     /** Draws the detached placements' overlays, after Litematica drew its own for the same overlay type. */
-    public static void drawOverlays(OverlayRenderType type, Camera camera, Matrix4f projMatrix) {
+    public static void drawOverlays(OverlayRenderType type, PoseStack viewMatrices, Camera camera, Matrix4f projMatrix) {
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return;
         MoveInterpolator.update();
@@ -170,6 +162,8 @@ public final class PlacementMeshRenderer {
 
         for (DrawSection draw : draws) {
             PoseStack matrices = new PoseStack();
+            // The section offset is camera-relative, but still needs the camera's view rotation.
+            matrices.last().pose().set(viewMatrices.last().pose());
             matrices.translate(draw.x(), draw.y(), draw.z());
             VertexBuffer buffer = draw.layer().vertexBuffer();
             buffer.bind();
