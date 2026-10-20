@@ -58,6 +58,8 @@ public final class PlacementMeshRenderer {
                                       Matrix4fc modelView, Vector4fc colorModulator, Matrix4fc textureMatrix,
                                       double cameraX, double cameraY, double cameraZ,
                                       LocalIntRef maxIndexCount) {
+        // diagnostics: -Dlfm.nodraw=true skips our draws (the reference mod's own chunks stay visible)
+        if (Boolean.getBoolean("lfm.nodraw")) return false;
         MeshUploader.processQueues();
         if (PlacementMeshManager.meshes().isEmpty()) return false;
         MoveInterpolator.update();
@@ -67,7 +69,7 @@ public final class PlacementMeshRenderer {
         List<TranslucentDraw> translucentDraws = new ArrayList<>();
 
         forEachVisibleSection(cameraX, cameraY, cameraZ, true, (section, ox, oy, oz) -> {
-            Vector3f offset = new Vector3f((float) ox, (float) oy, (float) oz);
+            Vector3f offset = new Vector3f((float) ox + Integer.getInteger("lfm.shift", 0), (float) oy, (float) oz);
 
             for (PlacementMesh.GpuLayer layer : section.layers()) {
                 if (layer.layer() == null || layer.vertexBuffer().isClosed()) continue;
@@ -97,7 +99,7 @@ public final class PlacementMeshRenderer {
                                 Matrix4fc modelView, Vector4fc colorModulator, Matrix4fc textureMatrix,
                                 LocalIntRef maxIndexCount, PlacementMesh.GpuLayer layer, Vector3f offset) {
         final int slot = transforms.size();
-        transforms.add(new Transform(modelView, colorModulator, offset, textureMatrix, 1.0f));
+        transforms.add(new Transform(modelView, Boolean.getBoolean("lfm.tint") ? new Vector4f(1.0f, 0.0f, 1.0f, 1.0f) : colorModulator, offset, textureMatrix, 1.0f));
         renderMap.get(layer.layer()).add(new RenderPass.Draw<>(0, layer.vertexBuffer(), layer.indexBuffer(),
         layer.indexType(), 0, layer.indexCount(), (slices, uploader) -> uploader.upload("DynamicTransforms", slices[slot])));
 
@@ -153,7 +155,9 @@ public final class PlacementMeshRenderer {
 
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds, SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Frustum fr = frustum;
+        // a stale frustum (captured before the teleport) silently culls every section; the mesh is small,
+        // so skip culling rather than trust it
+        Frustum fr = null;
         int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
