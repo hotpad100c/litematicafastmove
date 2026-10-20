@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexBuffer;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import ml.mypals.litematicafastmove.LitematicaFastMove;
 import ml.mypals.litematicafastmove.config.FastMoveConfig;
+import ml.mypals.litematicafastmove.render.SchematicExit;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -159,9 +160,12 @@ final class MeshUploader {
                 budget.bytes -= layer.vertexBytes;
                 VertexBuffer vertexBuffer = new VertexBuffer(BufferUsage.STATIC_WRITE);
                 // VertexBuffer#upload asserts the render thread and closes the MeshData itself.
-                vertexBuffer.bind();
-                vertexBuffer.upload(layer.take());
-                VertexBuffer.unbind();
+                // Iris 1.8 在上传时把顶点布局固化进 VAO，原版格式的数据要在 plainUpload 里上传
+                SchematicExit.plainUpload(() -> {
+                    vertexBuffer.bind();
+                    vertexBuffer.upload(layer.take());
+                    VertexBuffer.unbind();
+                });
                 layer.releaseAllocator();
                 PlacementMesh.SortInfo sort = layer.sortState != null
                         ? new PlacementMesh.SortInfo(layer.sortState, Double.NaN, Double.NaN, Double.NaN)
