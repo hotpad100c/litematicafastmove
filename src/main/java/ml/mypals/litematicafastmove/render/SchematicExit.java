@@ -69,7 +69,6 @@ public final class SchematicExit {
 
     /** 把 plainFormat 构建的数据上传进 VertexBuffer；必须在渲染线程调用 */
     public static void plainUpload(Runnable upload) {
-        // EXIT 0.1.1 also preserves the render-thread VAO format in plainFormat.
-        Exit.plainFormat(upload);
+        Exit.plainUpload(upload);
     }
 }
