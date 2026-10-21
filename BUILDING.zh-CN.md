@@ -2,6 +2,8 @@
 
 本说明适用于各 `port/<Minecraft版本>` 分支。必须将 LFM 和 EXIT 的 Minecraft 版本配对；不要直接用默认分支代替版本分支。1.20.4 的本次修复版本为 **1.0.1+1.20.4**。
 
+本分支的 EXIT 配对为 **0.1.1+1.21.4**，当前固定使用 [wwwzzzxxx/emergency-exit](https://github.com/wwwzzzxxx/emergency-exit/tree/port/1.21.4) 的 `b085c5e8293adb34bf93bf9cb8542ccfe84a869b`，等待上游审阅。手动构建此版本时，请从该 Fork 检出此 commit；下文 1.20.4 命令是另一个版本的示例。Actions 已按本分支配对固定仓库和 SHA。LFM 的 CPU 构建使用 `plainFormat`，渲染线程上传使用上游正式 `plainUpload` API。
+
 ## 构建环境和顺序
 
 使用仓库附带的 Gradle Wrapper，以 **JDK 25** 运行 Gradle（Loom 1.18.1 的要求）。这与游戏/输出字节码要求不同：1.16.5–1.17.1 使用 Java 16，1.18.2–1.20.4 使用 Java 17，1.20.6–1.21.x 使用 Java 21；EXIT 的 toolchain 也需要相应 JDK。不要通过把 `release` 改为 25 来解决 Gradle 启动问题。

@@ -160,8 +160,8 @@ final class MeshUploader {
                 VertexBuffer vertexBuffer = new VertexBuffer(BufferUsage.STATIC_WRITE);
                 // VertexBuffer#upload asserts the render thread and closes the MeshData itself.
                 // Mesh builders emit vanilla vertices. Iris has a separate VAO-layout switch, so upload under
-                // the same format guard as building, on the render thread.
-                ml.mypals.litematicafastmove.render.SchematicExit.plainFormat(() -> {
+                // the render-thread upload guard.
+                ml.mypals.litematicafastmove.render.SchematicExit.plainUpload(() -> {
                     vertexBuffer.bind();
                     try {
                         vertexBuffer.upload(layer.take());
