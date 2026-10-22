@@ -6,12 +6,10 @@
 #   scripts/build-all.sh --pull ...      fetch origin first and fast-forward each branch to it
 #
 # Each port/<mc> branch is checked out once as a worktree under worktrees/<mc> (git-ignored) and reused afterwards.
-# EXIT has to be in mavenLocal for each version (see PORTING.md); versions whose EXIT is missing are skipped.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
-EXIT_REPO="${HOME}/.m2/repository/ml/mypals/exit"
 mkdir -p "$DIST" "$ROOT/worktrees"
 
 pull=0
@@ -49,11 +47,6 @@ for mc in "${targets[@]}"; do
         else
             pulled[$mc]="(NOT pulled: diverged or local changes in the way)"
         fi
-    fi
-
-    exit_version="$(sed -n 's/^exit_version=//p' "$dir/gradle.properties" | tr -d '\r')"
-    if [ ! -d "$EXIT_REPO/emergency_exit-fabric/$exit_version" ] && [ ! -d "$EXIT_REPO/emergency_exit/$exit_version" ]; then
-        result[$mc]="SKIPPED: EXIT $exit_version not in mavenLocal"; continue
     fi
 
     echo "==> Building $mc"
