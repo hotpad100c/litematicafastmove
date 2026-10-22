@@ -4,13 +4,13 @@ plugins {
 }
 
 repositories {
-	// EXIT (emergency_exit) is not published anywhere yet: `./gradlew publishToMavenLocal` in its repository.
+	// EXIT (emergency_exit) comes from JitPack, built from https://github.com/Shader-Escape/emergency-exit
 	exclusiveContent {
 		forRepository {
-			mavenLocal()
+			maven { url = "https://jitpack.io" }
 		}
 		filter {
-			includeGroup "ml.mypals.exit"
+			includeGroup "com.github.Shader-Escape.emergency-exit"
 		}
 	}
 	exclusiveContent {
@@ -43,8 +43,8 @@ dependencies {
 
 	// EXIT routes the schematic rendering past shader packs. Nested, so players do not install it separately.
 	// The Fabric jar carries the whole library (its own classes and the common ones), so the one artifact is enough.
-	modImplementation("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
-	include("ml.mypals.exit:emergency_exit-fabric:${project.exit_version}")
+	modImplementation("com.github.Shader-Escape.emergency-exit:emergency_exit-fabric:${project.exit_version}") { transitive = false }
+	include("com.github.Shader-Escape.emergency-exit:emergency_exit-fabric:${project.exit_version}")
 
 	// Iris and Sodium for the development runs only, the same versions EXIT is built against. They must go through
 	// Loom's remapping, or their intermediary class tweakers clash with the named development runtime.

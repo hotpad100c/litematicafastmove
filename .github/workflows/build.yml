@@ -9,12 +9,6 @@ jobs:
     steps:
       - name: Checkout LFM
         uses: actions/checkout@v6
-      - name: Checkout matching EXIT
-        uses: actions/checkout@v6
-        with:
-          repository: wwwzzzxxx/emergency-exit
-          ref: b085c5e8293adb34bf93bf9cb8542ccfe84a869b
-          path: .exit-source
       - name: Validate Gradle wrappers
         uses: gradle/actions/wrapper-validation@v6
       - name: Install compile toolchains and Gradle JDK
@@ -26,11 +20,6 @@ jobs:
             17
             21
             25
-      - name: Publish EXIT into this runner's local Maven
-        working-directory: .exit-source
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :fabric:publishToMavenLocal --init-script ../scripts/exit-publication.init.gradle --console=plain -Porg.gradle.java.installations.fromEnv=JAVA_HOME_16_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
       - name: Build LFM
         run: |
           chmod +x ./gradlew

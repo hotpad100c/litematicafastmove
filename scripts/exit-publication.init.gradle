@@ -1,9 +1,0 @@
-// Older EXIT ports give both named and remapped sources the same classifier.
-// This only changes the development sources artifact, never the player jar.
-gradle.afterProject { project ->
-    if (project.path == ':fabric' && project.plugins.hasPlugin('net.fabricmc.fabric-loom-remap')) {
-        project.tasks.named('sourcesJar', org.gradle.api.tasks.bundling.Jar) {
-            archiveClassifier.set('dev-sources')
-        }
-    }
-}
