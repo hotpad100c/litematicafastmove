@@ -5,12 +5,10 @@
 #   scripts/build-all.sh 1.21.11 1.20.1  only these ("main" = the current checkout)
 #
 # Each port/<mc> branch is checked out once as a worktree under worktrees/<mc> (git-ignored) and reused afterwards.
-# EXIT has to be in mavenLocal for each version (see PORTING.md); versions whose EXIT is missing are skipped.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
-EXIT_REPO="${HOME}/.m2/repository/ml/mypals/exit"
 mkdir -p "$DIST" "$ROOT/worktrees"
 
 if [ $# -gt 0 ]; then
@@ -31,11 +29,6 @@ for mc in "${targets[@]}"; do
             fi
             git -C "$ROOT" worktree add "$dir" "port/$mc" >/dev/null || { result[$mc]="worktree failed"; continue; }
         fi
-    fi
-
-    exit_version="$(sed -n 's/^exit_version=//p' "$dir/gradle.properties" | tr -d '\r')"
-    if [ ! -d "$EXIT_REPO/emergency_exit-fabric/$exit_version" ] && [ ! -d "$EXIT_REPO/emergency_exit/$exit_version" ]; then
-        result[$mc]="SKIPPED: EXIT $exit_version not in mavenLocal"; continue
     fi
 
     echo "==> Building $mc"
