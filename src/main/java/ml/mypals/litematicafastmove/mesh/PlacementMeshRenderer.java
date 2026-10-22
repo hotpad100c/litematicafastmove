@@ -181,7 +181,10 @@ public final class PlacementMeshRenderer {
 
     private static void forEachVisibleSection(double cameraX, double cameraY, double cameraZ, boolean requestClipRebuilds, SectionVisitor visitor) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Frustum fr = frustum;
+        // Litematica 0.19.61 only refreshes the frustum when the camera moves on its own, so the captured frustum
+        // can be stale and cull sections that are on screen. The mesh is small, so skip culling here instead of
+        // trusting a stale frustum.
+        Frustum fr = null;
         int renderDistance = (Minecraft.getInstance().options.getEffectiveRenderDistance() + 2) * 16;
         double maxDistanceSq = (double) renderDistance * renderDistance;
 
