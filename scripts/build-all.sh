@@ -4,6 +4,7 @@
 #   scripts/build-all.sh                 main branch + every local port/<mc> branch
 #   scripts/build-all.sh 1.21.11 1.20.1  only these ("main" = the current checkout)
 #   scripts/build-all.sh --pull ...      fetch origin first and fast-forward each branch to it
+#   JOBS=3 scripts/build-all.sh          run at most 3 gradle builds at once (default 6)
 #
 # Each port/<mc> branch is checked out once as a worktree under worktrees/<mc> (git-ignored) and reused afterwards.
 # EXIT has to be in mavenLocal for each version (see PORTING.md); versions whose EXIT is missing are skipped.
@@ -11,8 +12,11 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
+JOBS="${JOBS:-6}"
+STATUS="$DIST/.status"
 EXIT_REPO="${HOME}/.m2/repository/ml/mypals/exit"
 mkdir -p "$DIST" "$ROOT/worktrees"
+rm -rf "$STATUS"; mkdir -p "$STATUS"
 
 pull=0
 if [ "${1:-}" = --pull ]; then
@@ -56,23 +60,30 @@ for mc in "${targets[@]}"; do
         result[$mc]="SKIPPED: EXIT $exit_version not in mavenLocal"; continue
     fi
 
+    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done
     echo "==> Building $mc"
-    rm -rf "$dir/build/libs"
-    if (cd "$dir" && ./gradlew build --console=plain) > "$DIST/build-$mc.log" 2>&1; then
-        for jar in "$dir"/build/libs/*.jar; do
-            case "$jar" in *-sources.jar|*-dev.jar) ;; *) cp "$jar" "$DIST/" ;; esac
-        done
-        result[$mc]="OK"
-        rm -f "$DIST/build-$mc.log"
-    else
-        result[$mc]="FAILED (see dist/build-$mc.log)"
-    fi
+    (
+        rm -rf "$dir/build/libs"
+        if (cd "$dir" && ./gradlew build --console=plain) > "$DIST/build-$mc.log" 2>&1; then
+            for jar in "$dir"/build/libs/*.jar; do
+                case "$jar" in *-sources.jar|*-dev.jar) ;; *) cp "$jar" "$DIST/" ;; esac
+            done
+            echo OK > "$STATUS/$mc"
+            rm -f "$DIST/build-$mc.log"
+        else
+            echo "FAILED (see dist/build-$mc.log)" > "$STATUS/$mc"
+        fi
+        echo "<== $mc: $(cat "$STATUS/$mc")"
+    ) &
 done
+wait
 
 echo
 failed=0
 for mc in "${targets[@]}"; do
+    [ -f "$STATUS/$mc" ] && result[$mc]="$(cat "$STATUS/$mc")"
     printf '%-10s %s %s\n' "$mc" "${result[$mc]}" "${pulled[$mc]:-}"
     case "${result[$mc]}" in OK) ;; *) failed=1 ;; esac
 done
+rm -rf "$STATUS"
 exit $failed
