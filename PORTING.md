@@ -31,9 +31,8 @@ Work per version:
 1. `mkdir -p Y:/MC/mod-dev/lfm-wt && git worktree add Y:/MC/mod-dev/lfm-wt/<mc> -b port/<mc> feat/render-delay`
 2. Set `gradle.properties` (minecraft_version, loader, loom, fabric_api_version, exit_version, iris/sodium
    Modrinth ids) and `build.gradle` (Java `release`, Litematica/malilib coordinates, `loom_version`).
-3. Publish the matching EXIT branch once, so the dependency resolves:
-   `cd Y:/MC/mod-dev/exit-porting/emergency-exit && git checkout port/<mc> && ./gradlew publishToMavenLocal`
-   (the artifact is `ml.mypals.exit:emergency_exit-fabric:<version>`).
+3. Set `exit_version` to the matching EXIT tag, `<EXIT version>-<mc>` (for example `0.1.0-1.21.11`). Gradle takes
+   EXIT from JitPack: `com.github.Shader-Escape.emergency-exit:emergency_exit-fabric:<tag>`.
 4. Port the source. The moving parts are the mixins into Litematica (`PlacementManagerTaskRebuild`,
    `SchematicPlacementManager`, `SchematicWorldRefresher`, `LitematicaRenderer`, `RenderHandler`, …) whose class
    and method names change between Litematica releases, and the mesh code, which uses Minecraft classes that
@@ -45,8 +44,8 @@ Work per version:
 ## Building every version at once
 
 `scripts/build-all.sh` (Git Bash) builds the current checkout plus every local `port/<mc>` branch and copies the jars to
-`dist/`. Each port branch is checked out once as a worktree under `worktrees/<mc>` (git-ignored) and reused. A version
-whose EXIT artifact is not in mavenLocal is skipped; build logs of failed versions stay in `dist/build-<mc>.log`.
+`dist/`. Each port branch is checked out once as a worktree under `worktrees/<mc>` (git-ignored) and reused. Build
+logs of failed versions stay in `dist/build-<mc>.log`.
 `scripts/build-all.sh 1.21.11 1.20.1` builds only those (`main` = the current checkout).
 
 Changes made on the main branch reach the ports by merging it into each `port/<mc>`.
