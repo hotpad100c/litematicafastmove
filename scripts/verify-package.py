@@ -28,7 +28,8 @@ def verify(root):
                 assert child.testzip() is None, 'Corrupt nested jar'
                 info = json.loads(child.read('fabric.mod.json'))
                 if info['id'] == 'emergency_exit':
-                    assert info['version'] == props['exit_version'], info
+                    # exit_version is the JitPack tag (0.1.1-1.21.1); the mod itself says 0.1.1+1.21.1.
+                    assert info['version'] == props['exit_version'].replace('-', '+', 1), info
                     exits.append((info['version'], hashlib.sha256(data).hexdigest()))
         assert len(exits) == 1, 'Expected exactly one nested EXIT, got ' + repr(exits)
     digest = hashlib.sha256(jar.read_bytes()).hexdigest()
