@@ -42,6 +42,18 @@ configurations.configureEach {
 	}
 }
 
+def mainCheckout = rootDir
+def dotGit = new File(rootDir, '.git')
+if (dotGit.isFile()) {
+	def gitDir = new File((dotGit.text =~ /gitdir:\s*(.+)/)[0][1].trim())
+	mainCheckout = gitDir.parentFile.parentFile.parentFile
+}
+loom {
+	runConfigs.configureEach {
+		runDir = new File(mainCheckout, 'run').absolutePath
+	}
+}
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
