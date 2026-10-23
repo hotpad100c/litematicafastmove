@@ -4,11 +4,9 @@ plugins {
 }
 
 repositories {
-	// EXIT (emergency_exit) comes from JitPack, built from https://github.com/Shader-Escape/emergency-exit
+	// EXIT (emergency_exit): mavenLocal when published there, otherwise JitPack (https://github.com/Shader-Escape/emergency-exit)
 	exclusiveContent {
-		forRepository {
-			maven { url = "https://jitpack.io" }
-		}
+		forRepositories(mavenLocal(), maven { url = "https://jitpack.io" })
 		filter {
 			includeGroup "com.github.Shader-Escape.emergency-exit"
 		}
