@@ -36,6 +36,7 @@ public class MixinLitematicaRenderer {
 
     @WrapMethod(method = "piecewiseRenderOverlay")
     private void routeOverlay(Matrix4f matrices, Matrix4f projMatrix, Operation<Void> original) {
+        SchematicExit.flushBatch();
         SchematicExit.portal(() -> original.call(matrices, projMatrix));
     }
 
