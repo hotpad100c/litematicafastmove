@@ -7,6 +7,7 @@ import ml.mypals.exit.api.ExitChannel;
 import ml.mypals.exit.api.ExitOptions;
 import ml.mypals.litematicafastmove.mesh.MeshDebugGizmos;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
 
 import static ml.mypals.litematicafastmove.LitematicaFastMove.MOD_ID;
@@ -42,6 +43,10 @@ public final class SchematicExit {
 
     public static RenderTarget redirect(RenderTarget original) {
         return ENABLED && Exit.isRouting() ? Exit.redirect(original) : original;
+    }
+
+    public static MultiBufferSource batch(MultiBufferSource original) {
+        return ENABLED ? channel().batch(original) : original;
     }
 
     public static void flushBatch() {
