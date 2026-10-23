@@ -31,8 +31,9 @@ Work per version:
 1. `mkdir -p Y:/MC/mod-dev/lfm-wt && git worktree add Y:/MC/mod-dev/lfm-wt/<mc> -b port/<mc> feat/render-delay`
 2. Set `gradle.properties` (minecraft_version, loader, loom, fabric_api_version, exit_version, iris/sodium
    Modrinth ids) and `build.gradle` (Java `release`, Litematica/malilib coordinates, `loom_version`).
-3. Set `exit_version` to the matching EXIT tag, `<EXIT version>-<mc>` (for example `0.1.0-1.21.11`). Gradle takes
-   EXIT from JitPack: `com.github.Shader-Escape.emergency-exit:emergency_exit-fabric:<tag>`.
+3. Set `exit_minecraft_version` to `<mc>` and keep `exit_version=+`: Gradle takes the newest EXIT release for that
+   Minecraft version from JitPack (`com.github.Shader-Escape.emergency-exit:emergency_exit-fabric:<EXIT version>-<mc>`,
+   for example `0.1.0-1.21.11`). To pin one, set `exit_version` to that tag.
 4. Port the source. The moving parts are the mixins into Litematica (`PlacementManagerTaskRebuild`,
    `SchematicPlacementManager`, `SchematicWorldRefresher`, `LitematicaRenderer`, `RenderHandler`, …) whose class
    and method names change between Litematica releases, and the mesh code, which uses Minecraft classes that
