@@ -27,8 +27,6 @@ repositories {
 	}
 }
 
-// EXIT: always the newest release for this Minecraft version. JitPack lists the versions of every Minecraft version
-// under one artifact, so the others are rejected before + picks the newest. A pinned branch snapshot is let through.
 configurations.configureEach {
 	resolutionStrategy {
 		componentSelection.all { ComponentSelection selection ->
