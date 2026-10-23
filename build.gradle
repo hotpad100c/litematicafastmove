@@ -38,6 +38,21 @@ configurations.configureEach {
 	}
 }
 
+def exitLocal = new File(System.getProperty('maven.repo.local') ?: "${System.getProperty('user.home')}/.m2/repository", 'com/github/Shader-Escape/emergency-exit')
+def exitRemapped = file('.gradle/loom-cache/remapped_mods/remapped/com/github/Shader-Escape/emergency-exit')
+exitLocal.listFiles()?.each { artifactDir ->
+	artifactDir.listFiles()?.findAll { it.name.endsWith("-${project.exit_minecraft_version}") }?.each { versionDir ->
+		def jar = new File(versionDir, "${artifactDir.name}-${versionDir.name}.jar")
+		if (!jar.isFile()) return
+		exitRemapped.listFiles()?.findAll { it.name.startsWith("${artifactDir.name}-") }?.each { remappedArtifact ->
+			def remapped = new File(remappedArtifact, "${versionDir.name}/${remappedArtifact.name}-${versionDir.name}.jar")
+			if (remapped.isFile() && remapped.lastModified() < jar.lastModified()) {
+				remapped.parentFile.deleteDir()
+			}
+		}
+	}
+}
+
 def mainCheckout = rootDir
 def dotGit = new File(rootDir, '.git')
 if (dotGit.isFile()) {
