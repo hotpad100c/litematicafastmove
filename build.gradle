@@ -27,6 +27,21 @@ repositories {
 	}
 }
 
+// EXIT: always the newest release for this Minecraft version. JitPack lists the versions of every Minecraft version
+// under one artifact, so the others are rejected before + picks the newest. A pinned branch snapshot is let through.
+configurations.configureEach {
+	resolutionStrategy {
+		componentSelection.all { ComponentSelection selection ->
+			if (selection.candidate.group == 'com.github.Shader-Escape.emergency-exit'
+				&& !selection.candidate.version.endsWith("-${project.exit_minecraft_version}")
+				&& !selection.candidate.version.endsWith('-SNAPSHOT')) {
+				selection.reject("EXIT for another Minecraft version than ${project.exit_minecraft_version}")
+			}
+		}
+		cacheDynamicVersionsFor 10, 'minutes'
+	}
+}
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
