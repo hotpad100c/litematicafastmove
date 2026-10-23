@@ -11,7 +11,6 @@ import ml.mypals.litematicafastmove.mesh.PlacementMeshManager;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshRenderer;
 import ml.mypals.litematicafastmove.render.SchematicExit;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -83,8 +82,7 @@ public class MixinWorldRendererSchematic {
                 z += shift.z;
             }
         }
-        PoseStack pose = SchematicExit.isActive() ? new PoseStack() : matrices;
-        original.call(dispatcher, entity, x, y, z, yaw, partialTicks, pose, SchematicExit.batch(buffers), light);
+        original.call(dispatcher, entity, x, y, z, yaw, partialTicks, matrices, SchematicExit.batch(buffers), light);
     }
 
     /** Shifts schematic block entities that still sit at their pre-move position. */
@@ -98,22 +96,11 @@ public class MixinWorldRendererSchematic {
             BlockPos pos = blockEntity.getBlockPos();
             shift = PendingMoveTracker.getObjectShift(pos.getX(), pos.getY(), pos.getZ());
         }
-        if (SchematicExit.isActive()) {
-            BlockPos pos = blockEntity.getBlockPos();
-            Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-            PoseStack pose = new PoseStack();
-            pose.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
-            if (shift != null) {
-                pose.translate(shift.x, shift.y, shift.z);
-            }
-            original.call(dispatcher, blockEntity, partialTicks, pose, SchematicExit.batch(buffers));
-            return;
-        }
         if (shift != null) {
             matrices.pushPose();
             matrices.translate(shift.x, shift.y, shift.z);
         }
-        original.call(dispatcher, blockEntity, partialTicks, matrices, buffers);
+        original.call(dispatcher, blockEntity, partialTicks, matrices, SchematicExit.batch(buffers));
         if (shift != null) {
             matrices.popPose();
         }
