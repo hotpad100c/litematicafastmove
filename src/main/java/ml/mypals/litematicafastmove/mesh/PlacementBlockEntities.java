@@ -5,6 +5,7 @@ import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import ml.mypals.litematicafastmove.sync.MoveInterpolator;
+import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -47,15 +48,14 @@ public class PlacementBlockEntities {
             if (buildOrigin == null || mesh.blockEntities.isEmpty() || !placement.isRenderingEnabled()) continue;
 
             Vec3 lag = MoveInterpolator.getLag(placement);
-            // The schematic world still holds this placement's data at the build origin until the move is
-            // committed, so translate from the build origin to the current (displayed) origin, plus the
-            // interpolation lag — exactly what the block mesh does.
             BlockPos delta = placement.getOrigin().subtract(buildOrigin);
+            PendingMoveTracker.MoveState pending = PendingMoveTracker.get(placement);
+            BlockPos toWorld = (pending != null ? pending.baseOrigin : placement.getOrigin()).subtract(buildOrigin);
 
             for (long[] positions : mesh.blockEntities.values()) {
                 for (long packed : positions) {
                     BlockPos buildPos = BlockPos.of(packed);
-                    BlockEntity blockEntity = world.getBlockEntity(buildPos);
+                    BlockEntity blockEntity = world.getBlockEntity(buildPos.offset(toWorld));
                     if (blockEntity == null) continue;
 
                     matrices.pushPose();
