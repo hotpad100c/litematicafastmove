@@ -1,5 +1,6 @@
 package ml.mypals.litematicafastmove.sync;
 
+import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.schematic.placement.SubRegionPlacement;
 import net.minecraft.core.BlockPos;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongPredicate;
 
 public final class PendingMoveTracker {
     public static final class MoveState {
@@ -26,12 +28,12 @@ public final class PendingMoveTracker {
     }
 
     private static final Map<SchematicPlacement, MoveState> STATES = new ConcurrentHashMap<>();
+    private static final Map<SchematicPlacement, Map<Long, BlockPos>> TRANSIT = new ConcurrentHashMap<>();
     private static final Set<Long> SKIPPED_REBUILDS = ConcurrentHashMap.newKeySet();
     private static volatile Set<Long> frozenChunks = Set.of();
-    private static volatile List<ShiftedBox> shiftedBoxes = List.of();
+    private static volatile Map<SchematicPlacement, List<Region>> regions = Map.of();
 
-    private record ShiftedBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ,
-                              SchematicPlacement placement, BlockPos baseOrigin) {
+    private record Region(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         boolean contains(int x, int y, int z) {
             return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
         }
@@ -59,6 +61,37 @@ public final class PendingMoveTracker {
         return state;
     }
 
+    /** The schematic world keeps the data at {@code dataOrigin} in {@code dataChunks} until Litematica rebuilds them. */
+    public static void onCommitted(SchematicPlacement placement, BlockPos dataOrigin, Set<ChunkPos> dataChunks) {
+        Map<Long, BlockPos> chunks = TRANSIT.computeIfAbsent(placement, p -> new ConcurrentHashMap<>());
+        for (ChunkPos pos : dataChunks) {
+            chunks.putIfAbsent(pos.toLong(), dataOrigin);
+        }
+        rebuildFrozen();
+    }
+
+    public static void pruneTransit() {
+        if (TRANSIT.isEmpty()) return;
+        LongPredicate pending = pendingRebuild();
+        boolean changed = false;
+        for (Map.Entry<SchematicPlacement, Map<Long, BlockPos>> entry : TRANSIT.entrySet()) {
+            changed |= entry.getValue().keySet().removeIf(chunk -> !pending.test(chunk));
+            if (entry.getValue().isEmpty()) {
+                TRANSIT.remove(entry.getKey());
+                changed = true;
+            }
+        }
+        if (changed) {
+            rebuildFrozen();
+        }
+    }
+
+    public static void forget(SchematicPlacement placement) {
+        if (TRANSIT.remove(placement) != null) {
+            rebuildFrozen();
+        }
+    }
+
     public static List<SchematicPlacement> getPending() {
         return new ArrayList<>(STATES.keySet());
     }
@@ -73,27 +106,50 @@ public final class PendingMoveTracker {
 
     public static void clear() {
         STATES.clear();
+        TRANSIT.clear();
         SKIPPED_REBUILDS.clear();
         frozenChunks = Set.of();
-        shiftedBoxes = List.of();
+        regions = Map.of();
     }
 
     public static boolean hasAnyObjectShift() {
-        return !shiftedBoxes.isEmpty() || MoveInterpolator.hasLagging();
+        return !regions.isEmpty() || MoveInterpolator.hasLagging();
     }
 
+    /** The shift of an object the schematic world holds at {@code (x, y, z)}: from where its data is to where it is drawn. */
     public static Vec3 getObjectShift(double x, double y, double z) {
-        List<ShiftedBox> boxes = shiftedBoxes;
-        if (boxes.isEmpty()) return MoveInterpolator.getLagShiftAt(x, y, z);
-
-        int bx = (int) Math.floor(x), by = (int) Math.floor(y), bz = (int) Math.floor(z);
-        for (ShiftedBox box : boxes) {
-            if (box.contains(bx, by, bz)) {
-                BlockPos delta = box.placement().getOrigin().subtract(box.baseOrigin());
-                return MoveInterpolator.getLag(box.placement()).add(delta.getX(), delta.getY(), delta.getZ());
+        Map<SchematicPlacement, List<Region>> current = regions;
+        if (!current.isEmpty()) {
+            int bx = (int) Math.floor(x), by = (int) Math.floor(y), bz = (int) Math.floor(z);
+            long chunk = ChunkPos.asLong(bx >> 4, bz >> 4);
+            LongPredicate pending = null;
+            for (Map.Entry<SchematicPlacement, List<Region>> entry : current.entrySet()) {
+                SchematicPlacement placement = entry.getKey();
+                BlockPos dataOrigin = null;
+                Map<Long, BlockPos> transit = TRANSIT.get(placement);
+                if (transit != null && transit.containsKey(chunk)) {
+                    if (pending == null) pending = pendingRebuild();
+                    if (pending.test(chunk)) dataOrigin = transit.get(chunk);
+                }
+                if (dataOrigin == null) {
+                    MoveState state = STATES.get(placement);
+                    dataOrigin = state != null ? state.baseOrigin : placement.getOrigin();
+                }
+                for (Region region : entry.getValue()) {
+                    if (region.contains(bx - dataOrigin.getX(), by - dataOrigin.getY(), bz - dataOrigin.getZ())) {
+                        BlockPos delta = placement.getOrigin().subtract(dataOrigin);
+                        return MoveInterpolator.getLag(placement).add(delta.getX(), delta.getY(), delta.getZ());
+                    }
+                }
             }
         }
         return MoveInterpolator.getLagShiftAt(x, y, z);
+    }
+
+    private static LongPredicate pendingRebuild() {
+        Object manager = DataManager.getSchematicPlacementManager();
+        LongPredicate queued = manager instanceof IFastMoveManager fastMove ? fastMove::litematicafastmove$isRebuildPending : chunk -> false;
+        return chunk -> SKIPPED_REBUILDS.contains(chunk) || queued.test(chunk);
     }
 
     public static boolean isFrozenChunk(int chunkX, int chunkZ) {
@@ -118,27 +174,30 @@ public final class PendingMoveTracker {
 
     private static void rebuildFrozen() {
         Set<Long> frozen = new HashSet<>();
-        List<ShiftedBox> boxes = new ArrayList<>();
+        Map<SchematicPlacement, List<Region>> placementRegions = new ConcurrentHashMap<>();
+
+        Set<SchematicPlacement> shifting = new HashSet<>(STATES.keySet());
+        shifting.addAll(TRANSIT.keySet());
+        for (SchematicPlacement placement : shifting) {
+            BlockPos origin = placement.getOrigin();
+            List<Region> relative = new ArrayList<>();
+            for (var box : placement.getSubRegionBoxes(SubRegionPlacement.RequiredEnabled.PLACEMENT_ENABLED).values()) {
+                BlockPos a = box.getPos1(), b = box.getPos2();
+                if (a == null || b == null) continue;
+                relative.add(new Region(Math.min(a.getX(), b.getX()) - origin.getX(), Math.min(a.getY(), b.getY()) - origin.getY(),
+                        Math.min(a.getZ(), b.getZ()) - origin.getZ(), Math.max(a.getX(), b.getX()) - origin.getX(),
+                        Math.max(a.getY(), b.getY()) - origin.getY(), Math.max(a.getZ(), b.getZ()) - origin.getZ()));
+            }
+            placementRegions.put(placement, List.copyOf(relative));
+        }
 
         STATES.forEach((placement, state) -> {
-            BlockPos delta = placement.getOrigin().subtract(state.baseOrigin);
-
-            for (var box : placement.getSubRegionBoxes(SubRegionPlacement.RequiredEnabled.PLACEMENT_ENABLED).values()) {
-                assert box.getPos1() != null;
-                BlockPos min = box.getPos1().subtract(delta);
-                assert box.getPos2() != null;
-                BlockPos max = box.getPos2().subtract(delta);
-                boxes.add(new ShiftedBox(Math.min(min.getX(), max.getX()), Math.min(min.getY(), max.getY()), Math.min(min.getZ(), max.getZ()),
-                        Math.max(min.getX(), max.getX()), Math.max(min.getY(), max.getY()), Math.max(min.getZ(), max.getZ()),
-                        placement, state.baseOrigin));
-            }
-
             for (ChunkPos pos : state.baseChunks) {
                 frozen.add(pos.toLong());
             }
         });
 
         frozenChunks = Set.copyOf(frozen);
-        shiftedBoxes = List.copyOf(boxes);
+        regions = placementRegions.isEmpty() ? Map.of() : placementRegions;
     }
 }
