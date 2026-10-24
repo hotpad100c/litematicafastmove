@@ -112,6 +112,8 @@ def nestedLibraries = tasks.register('nestedLibraries', Sync) {
 
 dependencies {
 	localRuntime(fileTree(nestedLibraries.map { it.destinationDir }) { include '*.jar' }.builtBy(nestedLibraries))
+	// Minecraft brings slf4j from 1.18; Iris for older versions needs it, as a plain library.
+	localRuntime("org.slf4j:slf4j-api:1.7.36")
 }
 
 processResources {
