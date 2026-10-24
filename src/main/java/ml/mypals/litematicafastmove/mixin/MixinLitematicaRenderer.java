@@ -14,6 +14,7 @@ public class MixinLitematicaRenderer {
     // detached placement meshes are appended as well.
     @WrapMethod(method = "piecewiseRenderOverlay")
     private void routeOverlay(PoseStack matrices, Operation<Void> original) {
+        SchematicExit.flushBatch();
         SchematicExit.portal(() -> original.call(matrices));
     }
 
