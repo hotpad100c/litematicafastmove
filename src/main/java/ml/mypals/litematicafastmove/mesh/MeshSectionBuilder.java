@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexSorting;
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.blaze3d.PrimitiveTopology;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.render.schematic.BlockModelCacheSchematic;
 import fi.dy.masa.litematica.render.schematic.BlockModelRendererSchematic;

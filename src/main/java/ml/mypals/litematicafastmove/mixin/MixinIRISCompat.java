@@ -1,6 +1,6 @@
 package ml.mypals.litematicafastmove.mixin;
 
-import fi.dy.masa.litematica.compat.iris.IrisCompat;
+import fi.dy.masa.malilib.compat.iris.IrisCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

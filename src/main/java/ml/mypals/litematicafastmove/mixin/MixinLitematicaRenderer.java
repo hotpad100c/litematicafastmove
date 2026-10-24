@@ -3,7 +3,7 @@ package ml.mypals.litematicafastmove.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.vertex.PoseStack;
 import fi.dy.masa.litematica.render.IWorldSchematicRenderer;
 import fi.dy.masa.litematica.render.LitematicaRenderer;
@@ -22,9 +22,9 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 public class MixinLitematicaRenderer {
 
     @WrapMethod(method = "piecewiseDrawBlockLayerGroup")
-    private void routeTerrain(RenderTarget fb, ChunkSectionLayerGroup group, Operation<Void> original) {
+    private void routeTerrain(ChunkSectionLayerGroup group, GpuSampler sampler, Operation<Void> original) {
         SchematicExit.portal(() -> {
-            original.call(SchematicExit.redirect(fb), group);
+            original.call(group, sampler);
             if (group == ChunkSectionLayerGroup.OPAQUE) {
                 SchematicExit.flushBatch();
             }

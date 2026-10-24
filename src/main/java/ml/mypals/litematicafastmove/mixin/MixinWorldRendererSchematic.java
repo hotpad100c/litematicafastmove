@@ -5,15 +5,15 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalIntRef;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.systems.RenderPass;
 import fi.dy.masa.litematica.render.schematic.OverlayRenderType;
 import fi.dy.masa.litematica.render.schematic.WorldRendererSchematic;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshManager;
 import ml.mypals.litematicafastmove.mesh.PlacementMeshRenderer;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.DynamicGpuData;
+import net.minecraft.client.renderer.DynamicUniforms;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -27,15 +27,15 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.joml.Vector4fc;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
 @Mixin(value = WorldRendererSchematic.class, remap = false)
 public class MixinWorldRendererSchematic {
@@ -47,9 +47,9 @@ public class MixinWorldRendererSchematic {
                                                  @Local(argsOnly = true, ordinal = 0) double cameraX,
                                                  @Local(argsOnly = true, ordinal = 1) double cameraY,
                                                  @Local(argsOnly = true, ordinal = 2) double cameraZ,
-                                                 @Local(name = "transformValues") List<DynamicGpuData.Transform> transformValues,
-                                                 @Local(name = "renderMap") Map<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
-                                                 @Local(name = "colorMod") Vector4fc colorMod,
+                                                 @Local(name = "transformValues") List<DynamicUniforms.Transform> transformValues,
+                                                 @Local(name = "renderMap") EnumMap<ChunkSectionLayer, List<RenderPass.Draw<GpuBufferSlice[]>>> renderMap,
+                                                 @Local(name = "colorMod") Vector4f colorMod,
                                                  @Local(name = "texMatrix") Matrix4f texMatrix,
                                                  @Local(name = "indexCount") LocalIntRef indexCount) {
         boolean added = PlacementMeshRenderer.appendDraws(renderMap, transformValues, modelView, colorMod, texMatrix,
