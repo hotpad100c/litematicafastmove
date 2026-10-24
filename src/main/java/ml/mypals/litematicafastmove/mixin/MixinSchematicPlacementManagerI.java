@@ -11,6 +11,7 @@ import ml.mypals.litematicafastmove.sync.MoveInterpolator;
 import ml.mypals.litematicafastmove.sync.PendingMoveTracker;
 import ml.mypals.litematicafastmove.sync.PlacementSnapshot;
 import net.minecraft.world.level.ChunkPos;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -30,6 +31,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
     @Shadow @Final protected Set<ChunkPos> chunksPreChange;
     @Shadow @Final protected Set<ChunkPos> chunksToRebuild;
     @Shadow @Final protected Set<ChunkPos> chunkRebuildQueue;
+    @Shadow @Final protected LongOpenHashSet chunksToUnload;
 
     @Shadow abstract void onPostPlacementChange(SchematicPlacement placement);
 
@@ -70,6 +72,9 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
         if (state != null) {
             this.chunksPreChange.addAll(state.baseChunks);
             PendingMoveTracker.remove(placement);
+            if (pureTranslation) {
+                PendingMoveTracker.onCommitted(placement, state.baseOrigin, state.baseChunks);
+            }
             this.litematicafastmove$rebuildSkipped();
         }
 
@@ -90,6 +95,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
         if (placement != null) {
             // Put the chunk index back at the current origin first, only then can the vanilla removal unload the right chunks
             this.litematicafastmove$commit(placement);
+            PendingMoveTracker.forget(placement);
             PlacementAccessorRegistry.invalidate(placement);
             PlacementMeshManager.dispose(placement);
         }
@@ -135,6 +141,7 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
         if (state == null) return;
 
         if (!placement.getOrigin().equals(state.baseOrigin)) {
+            PendingMoveTracker.onCommitted(placement, state.baseOrigin, state.baseChunks);
             this.chunksPreChange.clear();
             this.chunksPreChange.addAll(state.baseChunks);
             this.litematicafastmove$committing = true;
@@ -159,10 +166,18 @@ public abstract class MixinSchematicPlacementManagerI implements IFastMoveManage
 
     @Override
     public void litematicafastmove$commitSettled(long nowMs) {
+        PendingMoveTracker.pruneTransit();
         if (!PendingMoveTracker.hasAnyPending()) return;
         for (SchematicPlacement placement : PendingMoveTracker.getDueForCommit(nowMs, FastMoveConfig.COMMIT_DELAY_MS.getIntegerValue())) {
             this.litematicafastmove$commit(placement);
         }
+    }
+
+    @Override
+    public boolean litematicafastmove$isRebuildPending(long chunk) {
+        if (this.chunksToUnload.contains(chunk)) return true;
+        ChunkPos pos = new ChunkPos(ChunkPos.getX(chunk), ChunkPos.getZ(chunk));
+        return this.chunkRebuildQueue.contains(pos) || this.chunksToRebuild.contains(pos);
     }
 
     @Unique

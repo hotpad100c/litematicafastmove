@@ -7,4 +7,5 @@ public interface IFastMoveManager {
     void litematicafastmove$commit(SchematicPlacement placement);
     void litematicafastmove$commitAll();
     void litematicafastmove$commitSettled(long nowMs);
+    boolean litematicafastmove$isRebuildPending(long chunk);
 }
