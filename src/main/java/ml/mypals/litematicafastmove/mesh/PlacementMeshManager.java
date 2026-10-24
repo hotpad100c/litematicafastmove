@@ -28,6 +28,7 @@ public final class PlacementMeshManager {
     private static final Map<SchematicPlacement, PlacementMesh> MESHES = new ConcurrentHashMap<>();
     private static final Set<Long> DIRTY_CHUNKS = ConcurrentHashMap.newKeySet();
     private static final Set<Long> DIRTY_BLOCKS = ConcurrentHashMap.newKeySet();
+    private static final Set<Long> DIRTY_SCHEMATIC_BLOCKS = ConcurrentHashMap.newKeySet();
     private static final Set<SchematicPlacement> DIRTY_PLACEMENTS = ConcurrentHashMap.newKeySet();
     private static final AtomicInteger GENERATION = new AtomicInteger();
 
@@ -149,6 +150,13 @@ public final class PlacementMeshManager {
         }
     }
 
+    /** A block of the schematic itself was edited: its section is rebuilt even where the real world is all air. */
+    public static void markSchematicBlockDirty(BlockPos pos) {
+        if (!MESHES.isEmpty()) {
+            DIRTY_SCHEMATIC_BLOCKS.add(pos.asLong());
+        }
+    }
+
     /**
      * 真实世界区块加载，整列都变化
      */
@@ -168,10 +176,11 @@ public final class PlacementMeshManager {
     }
 
     public static void processDirty() {
-        if (DIRTY_CHUNKS.isEmpty() && DIRTY_BLOCKS.isEmpty() && DIRTY_PLACEMENTS.isEmpty()) return;
+        if (DIRTY_CHUNKS.isEmpty() && DIRTY_BLOCKS.isEmpty() && DIRTY_SCHEMATIC_BLOCKS.isEmpty() && DIRTY_PLACEMENTS.isEmpty()) return;
 
         List<Long> chunks = drain(DIRTY_CHUNKS);
         List<Long> blocks = drain(DIRTY_BLOCKS);
+        List<Long> schematicBlocks = drain(DIRTY_SCHEMATIC_BLOCKS);
         List<SchematicPlacement> placements = drain(DIRTY_PLACEMENTS);
 
         for (Map.Entry<SchematicPlacement, PlacementMesh> entry : MESHES.entrySet()) {
@@ -186,6 +195,7 @@ public final class PlacementMeshManager {
             addSectionsInChunks(accessor, chunks, delta, keys);
             addSectionsAroundBlocks(accessor, blocks, delta, keys);
             skipStillEmptySections(mesh, accessor, keys, delta);
+            addSectionsAroundBlocks(accessor, schematicBlocks, delta, keys);
 
             if (!keys.isEmpty()) {
                 requestPartialBuild(placement, mesh, keys);
