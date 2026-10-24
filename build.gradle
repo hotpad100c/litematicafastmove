@@ -4,11 +4,9 @@ plugins {
 }
 
 repositories {
-	// EXIT (emergency_exit) comes from JitPack, built from https://github.com/Shader-Escape/emergency-exit
+	// EXIT (emergency_exit): mavenLocal when published there, otherwise JitPack (https://github.com/Shader-Escape/emergency-exit)
 	exclusiveContent {
-		forRepository {
-			maven { url = "https://jitpack.io" }
-		}
+		forRepositories(mavenLocal(), maven { url = "https://jitpack.io" })
 		filter {
 			includeGroup "com.github.Shader-Escape.emergency-exit"
 		}
@@ -27,8 +25,6 @@ repositories {
 	}
 }
 
-// EXIT: always the newest release for this Minecraft version. JitPack lists the versions of every Minecraft version
-// under one artifact, so the others are rejected before + picks the newest. A pinned branch snapshot is let through.
 configurations.configureEach {
 	resolutionStrategy {
 		componentSelection.all { ComponentSelection selection ->
@@ -39,6 +35,33 @@ configurations.configureEach {
 			}
 		}
 		cacheDynamicVersionsFor 10, 'minutes'
+	}
+}
+
+def exitLocal = new File(System.getProperty('maven.repo.local') ?: "${System.getProperty('user.home')}/.m2/repository", 'com/github/Shader-Escape/emergency-exit')
+def exitRemapped = file('.gradle/loom-cache/remapped_mods/remapped/com/github/Shader-Escape/emergency-exit')
+exitLocal.listFiles()?.each { artifactDir ->
+	artifactDir.listFiles()?.findAll { it.name.endsWith("-${project.exit_minecraft_version}") }?.each { versionDir ->
+		def jar = new File(versionDir, "${artifactDir.name}-${versionDir.name}.jar")
+		if (!jar.isFile()) return
+		exitRemapped.listFiles()?.findAll { it.name.startsWith("${artifactDir.name}-") }?.each { remappedArtifact ->
+			def remapped = new File(remappedArtifact, "${versionDir.name}/${remappedArtifact.name}-${versionDir.name}.jar")
+			if (remapped.isFile() && remapped.lastModified() < jar.lastModified()) {
+				remapped.parentFile.deleteDir()
+			}
+		}
+	}
+}
+
+def mainCheckout = rootDir
+def dotGit = new File(rootDir, '.git')
+if (dotGit.isFile()) {
+	def gitDir = new File((dotGit.text =~ /gitdir:\s*(.+)/)[0][1].trim())
+	mainCheckout = gitDir.parentFile.parentFile.parentFile
+}
+loom {
+	runConfigs.configureEach {
+		runDir = new File(mainCheckout, 'run').absolutePath
 	}
 }
 
