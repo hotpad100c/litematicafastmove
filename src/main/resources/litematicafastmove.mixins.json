@@ -12,6 +12,7 @@
     "MixinLitematicaRenderer",
     "MixinRenderHandler",
     "MixinSchematicPlacementManagerI",
+    "MixinSchematicUtils",
     "MixinSchematicVerifier",
     "MixinSchematicWorldRefresher",
     "MixinWorldRendererSchematic"
