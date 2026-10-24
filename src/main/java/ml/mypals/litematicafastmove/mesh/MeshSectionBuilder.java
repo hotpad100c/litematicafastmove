@@ -279,7 +279,7 @@ public final class MeshSectionBuilder {
                     boolean isTranslucent = entry.getKey() == RenderType.translucent();
                     BufferBuilder.SortState sortState = null;
                     if (isTranslucent) {
-                        // 1.20 replaced the sort origin with a VertexSorting; on 1.19.3 the BufferBuilder sorts the
+                        // 1.20 replaced the sort origin with a VertexSorting; on 1.19.4 the BufferBuilder sorts the
                         // quads around setQuadSortOrigin, which is exactly what the vanilla chunk resort does.
                         builder.setQuadSortOrigin(cameraX, cameraY, cameraZ);
                         sortState = builder.getSortState();
