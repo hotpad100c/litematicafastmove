@@ -87,7 +87,7 @@ public class MixinWorldRendererSchematic {
                 z += shift.z;
             }
         }
-        original.call(dispatcher, entity, x, y, z, yaw, partialTicks, matrices, buffers, light);
+        original.call(dispatcher, entity, x, y, z, yaw, partialTicks, matrices, SchematicExit.batch(buffers), light);
     }
 
     /** Shifts schematic block entities that still sit at their pre-move position. */
@@ -105,7 +105,7 @@ public class MixinWorldRendererSchematic {
             matrices.pushPose();
             matrices.translate(shift.x, shift.y, shift.z);
         }
-        original.call(dispatcher, blockEntity, partialTicks, matrices, buffers);
+        original.call(dispatcher, blockEntity, partialTicks, matrices, SchematicExit.batch(buffers));
         if (shift != null) {
             matrices.popPose();
         }
