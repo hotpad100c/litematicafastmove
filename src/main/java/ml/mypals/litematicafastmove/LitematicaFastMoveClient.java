@@ -15,6 +15,7 @@ public class LitematicaFastMoveClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            PlacementMeshManager.processUploads();
             if (client.level == null) return;
 
             SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
