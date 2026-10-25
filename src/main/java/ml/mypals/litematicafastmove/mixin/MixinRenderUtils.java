@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(value = RenderUtils.class, remap = false)
 public class MixinRenderUtils {
 
-    @ModifyReturnValue(method = "mainTarget", at = @At("RETURN"))
+    @ModifyReturnValue(method = "fb", at = @At("RETURN"))
     private static RenderTarget routeMainTarget(RenderTarget original) {
         return SchematicExit.redirect(original);
     }

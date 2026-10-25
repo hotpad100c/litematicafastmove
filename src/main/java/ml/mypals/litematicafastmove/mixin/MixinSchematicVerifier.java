@@ -12,8 +12,8 @@ import fi.dy.masa.litematica.util.IgnoreBlockRegistry;
 import fi.dy.masa.litematica.util.ItemUtils;
 import fi.dy.masa.litematica.util.WorldUtils;
 import fi.dy.masa.litematica.world.WorldSchematic;
-import fi.dy.masa.malilib.util.position.IntBoundingBox;
-import fi.dy.masa.malilib.util.position.LayerRange;
+import fi.dy.masa.malilib.util.IntBoundingBox;
+import fi.dy.masa.malilib.util.LayerRange;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -128,8 +128,8 @@ public abstract class MixinSchematicVerifier extends TaskBase {
     @Unique
     private static IntBoundingBox litematicafastmove$clamp(IntBoundingBox box, LayerRange range) {
         Direction.Axis axis = range.getAxis();
-        int min = range.getMinLayerBoundary();
-        int max = range.getMaxLayerBoundary();
+        int min = range.getLayerMin();
+        int max = range.getLayerMax();
         int minX = axis == Direction.Axis.X ? Math.max(box.minX(), min) : box.minX();
         int minY = axis == Direction.Axis.Y ? Math.max(box.minY(), min) : box.minY();
         int minZ = axis == Direction.Axis.Z ? Math.max(box.minZ(), min) : box.minZ();
@@ -174,7 +174,7 @@ public abstract class MixinSchematicVerifier extends TaskBase {
                     for (BlockPos pos : group.positions()) {
                         this.blockMismatches.put(pos, group.mismatch());
                     }
-                    ItemUtils.setItemForBlock(this.worldClient, itemPos, group.mismatch().stateFound());
+                    ItemUtils.setItemForBlock(this.worldClient, itemPos, group.mismatch().stateFound);
                 }
             }
 

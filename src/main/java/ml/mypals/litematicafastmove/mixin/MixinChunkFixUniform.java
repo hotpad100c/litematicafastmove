@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(value = ChunkFixUniform.class, remap = false)
 public class MixinChunkFixUniform {
 
-    @WrapOperation(method = "updateBuffer", at = @At(value = "INVOKE",
+    @WrapOperation(method = "fillBuffer", at = @At(value = "INVOKE",
             target = "Lfi/dy/masa/malilib/compat/iris/IrisCompat;isShaderActive()Z"))
     private boolean shadersOffWhenRouted(Operation<Boolean> original) {
         return original.call() && !SchematicExit.isActive();

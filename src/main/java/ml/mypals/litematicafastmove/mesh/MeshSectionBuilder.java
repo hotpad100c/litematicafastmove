@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexSorting;
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.render.schematic.BlockModelCacheSchematic;
 import fi.dy.masa.litematica.render.schematic.BlockModelRendererSchematic;
@@ -79,7 +79,7 @@ public final class MeshSectionBuilder {
                        BlockPos buildOrigin, Set<Long> keys, BlockPos clientDelta, WorldSchematic world, ClientLevel clientLevel,
                        Consumer<PlacementMesh.BuiltPlacementBuffer> onBuilt) {
         LayerRangeClip.Range range = LayerRangeClip.snapshot();
-        Vec3 camera = Minecraft.getInstance().gameRenderer.mainCamera().position();
+        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().position();
         boolean full = keys == null;
 
         List<Long> sectionKeys = full ? allSections(accessor) : new ArrayList<>(keys);
@@ -226,7 +226,7 @@ public final class MeshSectionBuilder {
                         p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
                         type -> overlayBuilders.computeIfAbsent(type, t -> new BufferBuilder(
                                 overlayAllocators.computeIfAbsent(t, k -> new ByteBufferBuilder(256 * 1024)),
-                                t.topology(), t.vertexFormat())))
+                                t.getDrawMode(), t.getVertexFormat())))
                 : null;
 
         try {
@@ -369,7 +369,7 @@ public final class MeshSectionBuilder {
                                          EnumMap<ChunkSectionLayer, ByteBufferBuilder> allocators, ChunkSectionLayer layer) {
         return builders.computeIfAbsent(layer, l -> new BufferBuilder(
                 allocators.computeIfAbsent(l, k -> new ByteBufferBuilder(k.bufferSize())),
-                PrimitiveTopology.QUADS, l.vertexFormat()));
+                VertexFormat.Mode.QUADS, l.vertexFormat()));
     }
 
     private static ByteBuffer copy(ByteBuffer source) {

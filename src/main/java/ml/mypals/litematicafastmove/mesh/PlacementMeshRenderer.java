@@ -34,8 +34,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 
 public final class PlacementMeshRenderer {
@@ -110,7 +110,7 @@ public final class PlacementMeshRenderer {
         if (PlacementMeshManager.meshes().isEmpty()) return;
 
         Vec3 cameraPos = camera.position();
-        Matrix4f viewMatrix = RenderSystem.getModelViewMatrixCopy();
+        Matrix4f viewMatrix = new Matrix4f(RenderSystem.getModelViewMatrix());
         Vector4f colorModulator = new Vector4f(1f, 1f, 1f, 1f);
         Matrix4f textureMatrix = new Matrix4f();
         List<RenderPass.Draw<GpuBufferSlice[]>> draws = new ArrayList<>();
@@ -134,16 +134,16 @@ public final class PlacementMeshRenderer {
 
         boolean renderThrough = Configs.Visuals.SCHEMATIC_OVERLAY_RENDER_THROUGH.getBooleanValue() ||
                                 Hotkeys.RENDER_OVERLAY_THROUGH_BLOCKS.getKeybind().isKeybindHeld();
-        RenderPipeline pipeline = renderThrough ? type.renderThrough() : type.pipeline();
-        RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+        RenderPipeline pipeline = renderThrough ? type.getRenderThrough() : type.getPipeline();
+        RenderTarget target = Minecraft.getInstance().getMainRenderTarget();
         GpuTextureView colorTexture = target.getColorTextureView();
         GpuTextureView depthTexture = target.getDepthTextureView();
-        RenderSystem.AutoStorageIndexBuffer autoStorageIndexBuffer = RenderSystem.getSequentialBuffer(type.topology());
+        RenderSystem.AutoStorageIndexBuffer autoStorageIndexBuffer = RenderSystem.getSequentialBuffer(type.getDrawMode());
         GpuBufferSlice[] slices = RenderSystem.getDynamicUniforms().writeTransforms(transforms.toArray(new DynamicUniforms.Transform[0]));
 
         assert colorTexture != null;
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "litematicafastmove:placement_overlay", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
+                () -> "litematicafastmove:placement_overlay", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
             pass.setPipeline(pipeline);
             RenderSystem.bindDefaultUniforms(pass);
             pass.drawMultipleIndexed(draws, autoStorageIndexBuffer.getBuffer(maxIndexCount[0]), autoStorageIndexBuffer.type(),
