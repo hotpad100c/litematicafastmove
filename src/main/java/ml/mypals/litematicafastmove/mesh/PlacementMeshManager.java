@@ -179,6 +179,11 @@ public final class PlacementMeshManager {
         }
     }
 
+    /** Finished builds wait for an upload that only drawing used to run; without it they piled up off-heap. */
+    public static void processUploads() {
+        MeshUploader.processQueues();
+    }
+
     public static void processDirty() {
         if (DIRTY_CHUNKS.isEmpty() && DIRTY_BLOCKS.isEmpty() && DIRTY_SCHEMATIC_BLOCKS.isEmpty() && DIRTY_PLACEMENTS.isEmpty()) return;
 
