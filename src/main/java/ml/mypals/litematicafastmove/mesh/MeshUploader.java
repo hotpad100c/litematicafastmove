@@ -165,6 +165,7 @@ final class MeshUploader {
                 vertexBuffer.bind();
                 vertexBuffer.upload(layer.buffer());
                 VertexBuffer.unbind();
+                layer.free();
                 PlacementMesh.SortInfo sort = null;
                 if (layer.sortState() != null) {
                     sort = new PlacementMesh.SortInfo(layer.sortState(), Double.NaN, Double.NaN, Double.NaN,
