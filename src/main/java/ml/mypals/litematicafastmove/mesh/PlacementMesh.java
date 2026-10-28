@@ -1,6 +1,7 @@
 package ml.mypals.litematicafastmove.mesh;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import ml.mypals.litematicafastmove.mixin.BufferBuilderAccessor;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import fi.dy.masa.litematica.render.schematic.ChunkRendererSchematicVbo.OverlayRenderType;
@@ -8,6 +9,7 @@ import ml.mypals.litematicafastmove.access.PlacementBlockAccessor;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import org.lwjgl.system.MemoryUtil;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -38,7 +40,7 @@ final class PlacementMesh {
     record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder buffer,
                     int indexCount, BufferBuilder.SortState sortState, int vertexBytes, long hash) {
         void free() {
-            // 1.18.2 has no pooled buffer to hand back: the direct ByteBuffer dies with the builder
+            freeNative(this.buffer);
         }
     }
     // clientEmpty: the matching area of the real world (grown by one block) is all air
@@ -157,5 +159,9 @@ final class PlacementMesh {
         this.uploadingPartials.clear();
         this.clipRebuildPending.clear();
         this.blockEntities.clear();
+    }
+
+    static void freeNative(BufferBuilder builder) {
+        MemoryUtil.getAllocator(false).free(MemoryUtil.memAddress0(((BufferBuilderAccessor) builder).lfm$buffer()));
     }
 }
