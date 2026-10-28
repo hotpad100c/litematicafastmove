@@ -35,10 +35,15 @@ final class PlacementMesh {
      * on the render thread later. hash: content hash of the vertex data, used to keep the old GPU buffer when a rebuild
      * produced the same geometry.
      */
-    record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder.RenderedBuffer buffer,
+    record CpuLayer(RenderType layer, OverlayRenderType overlay, BufferBuilder.RenderedBuffer buffer, BufferBuilder builder,
                     int indexCount, BufferBuilder.SortState sortState, int vertexBytes, long hash) {
         void free() {
             this.buffer.release();
+            this.builder.release();
+        }
+
+        void releaseUploaded() {
+            this.builder.release();
         }
     }
     // clientEmpty: the matching area of the real world (grown by one block) is all air

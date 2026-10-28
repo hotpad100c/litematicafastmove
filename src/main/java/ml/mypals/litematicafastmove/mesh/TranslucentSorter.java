@@ -44,6 +44,7 @@ public class TranslucentSorter {
             } finally {
                 VertexBuffer.unbind();
             }
+            builder.release();
             sort.lastX = rx;
             sort.lastY = ry;
             sort.lastZ = rz;
