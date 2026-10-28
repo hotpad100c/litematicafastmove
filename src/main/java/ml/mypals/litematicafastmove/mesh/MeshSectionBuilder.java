@@ -197,123 +197,121 @@ public final class MeshSectionBuilder {
         BlockPos.MutableBlockPos clientPos = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos overlayClientPos = new BlockPos.MutableBlockPos();
 
-        try {
-            for (long key : sectionKeys) {
-                if (mesh.requestedGeneration != generation) {
-                    sections.forEach(s -> s.layers().forEach(PlacementMesh.CpuLayer::free));
-                    return null;
-                }
+        for (long key : sectionKeys) {
+            if (mesh.requestedGeneration != generation) {
+                sections.forEach(s -> s.layers().forEach(PlacementMesh.CpuLayer::free));
+                return null;
+            }
 
-                int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
-                BlockPos sectionOrigin = new BlockPos(sx << 4, sy << 4, sz << 4);
-                int x0 = Math.max(sx << 4, min.getX()), x1 = Math.min((sx << 4) + 15, max.getX());
-                int y0 = Math.max(sy << 4, min.getY()), y1 = Math.min((sy << 4) + 15, max.getY());
-                int z0 = Math.max(sz << 4, min.getZ()), z1 = Math.min((sz << 4) + 15, max.getZ());
-                PlacementMesh.Clip clip = LayerRangeClip.compute(range, min, max, sectionOrigin, clientDelta);
-                LongArrayList blockEntities = new LongArrayList();
+            int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
+            BlockPos sectionOrigin = new BlockPos(sx << 4, sy << 4, sz << 4);
+            int x0 = Math.max(sx << 4, min.getX()), x1 = Math.min((sx << 4) + 15, max.getX());
+            int y0 = Math.max(sy << 4, min.getY()), y1 = Math.min((sy << 4) + 15, max.getY());
+            int z0 = Math.max(sz << 4, min.getZ()), z1 = Math.min((sz << 4) + 15, max.getZ());
+            PlacementMesh.Clip clip = LayerRangeClip.compute(range, min, max, sectionOrigin, clientDelta);
+            LongArrayList blockEntities = new LongArrayList();
 
-                boolean hasSchematicBlocks = view.loadSection(sx, sy, sz);
-                boolean hasBlocks = view.hasUnclippedBlocks();
-                boolean clippedAway = clip != null && clip.isEmpty();
-                boolean clientEmpty = ClientRegions.isSectionEmpty(clientLevel, min, max, key, clientDelta);
-                // With only air in the schematic there can still be overlay "extra blocks", but not if the client area is air too
-                boolean scan = !clippedAway && (hasSchematicBlocks || !clientEmpty);
-                boolean overlayEnabled = OverlayMeshBuilder.isEnabled();
+            boolean hasSchematicBlocks = view.loadSection(sx, sy, sz);
+            boolean hasBlocks = view.hasUnclippedBlocks();
+            boolean clippedAway = clip != null && clip.isEmpty();
+            boolean clientEmpty = ClientRegions.isSectionEmpty(clientLevel, min, max, key, clientDelta);
+            // With only air in the schematic there can still be overlay "extra blocks", but not if the client area is air too
+            boolean scan = !clippedAway && (hasSchematicBlocks || !clientEmpty);
+            boolean overlayEnabled = OverlayMeshBuilder.isEnabled();
 
-                Map<RenderType, BufferBuilder> builders = new java.util.HashMap<>();
-                Map<OverlayRenderType, BufferBuilder> overlayBuilders = new EnumMap<>(OverlayRenderType.class);
+            Map<RenderType, BufferBuilder> builders = new java.util.HashMap<>();
+            Map<OverlayRenderType, BufferBuilder> overlayBuilders = new EnumMap<>(OverlayRenderType.class);
 
-                if (scan) {
-                    OverlayMeshBuilder overlay = overlayEnabled
-                            ? new OverlayMeshBuilder(view,
-                                    p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
-                                    type -> overlayBuilders.computeIfAbsent(type, t -> newBuffer(t.getDrawMode(), com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR, 256 * 1024)))
-                            : null;
+            if (scan) {
+                OverlayMeshBuilder overlay = overlayEnabled
+                        ? new OverlayMeshBuilder(view,
+                                p -> clientLevel.getBlockState(overlayClientPos.setWithOffset(p, clientDelta)),
+                                type -> overlayBuilders.computeIfAbsent(type, t -> newBuffer(t.getDrawMode(), com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR, 256 * 1024)))
+                        : null;
 
-                    for (int y = y0; y <= y1; y++) {
-                        for (int z = z0; z <= z1; z++) {
-                            for (int x = x0; x <= x1; x++) {
-                                if (clipAxis != null) {
-                                    int v = clipAxis.choose(x, y, z);
-                                    if (v < clipMin || v > clipMax) continue;
+                for (int y = y0; y <= y1; y++) {
+                    for (int z = z0; z <= z1; z++) {
+                        for (int x = x0; x <= x1; x++) {
+                            if (clipAxis != null) {
+                                int v = clipAxis.choose(x, y, z);
+                                if (v < clipMin || v > clipMax) continue;
+                            }
+
+                            pos.set(x, y, z);
+                            BlockState state = view.getBlockState(pos);
+                            clientPos.setWithOffset(pos, clientDelta);
+                            BlockState clientState = clientLevel.getBlockState(clientPos);
+                            boolean schematicAir = state.isAir();
+                            boolean clientAir = clientState.isAir();
+
+                            if (schematicAir && (clientAir || !accessor.isInAnyRegion(x, y, z))) continue;
+
+                            boolean missing = false;
+                            if (!schematicAir && (clientAir || (renderColliding && clientState != state))) {
+                                tessellate(view, state, pos, blockRenderer,
+                                        layer -> builders.computeIfAbsent(translucent ? RenderType.translucent() : layer,
+                                                l -> newBuffer(l.mode(), l.format(), l.bufferSize())));
+                                if (state.hasBlockEntity()) {
+                                    blockEntities.add(BlockPos.asLong(x, y, z));
                                 }
+                                missing = clientAir && state.getRenderShape() == RenderShape.MODEL;
+                            }
 
-                                pos.set(x, y, z);
-                                BlockState state = view.getBlockState(pos);
-                                clientPos.setWithOffset(pos, clientDelta);
-                                BlockState clientState = clientLevel.getBlockState(clientPos);
-                                boolean schematicAir = state.isAir();
-                                boolean clientAir = clientState.isAir();
-
-                                if (schematicAir && (clientAir || !accessor.isInAnyRegion(x, y, z))) continue;
-
-                                boolean missing = false;
-                                if (!schematicAir && (clientAir || (renderColliding && clientState != state))) {
-                                    tessellate(view, state, pos, blockRenderer,
-                                            layer -> builders.computeIfAbsent(translucent ? RenderType.translucent() : layer,
-                                                    l -> newBuffer(l.mode(), l.format(), l.bufferSize())));
-                                    if (state.hasBlockEntity()) {
-                                        blockEntities.add(BlockPos.asLong(x, y, z));
-                                    }
-                                    missing = clientAir && state.getRenderShape() == RenderShape.MODEL;
-                                }
-
-                                if (overlay != null) {
-                                    try {
-                                        overlay.addOverlay(pos, state, clientState, missing);
-                                    } catch (Throwable e) {
-                                        LitematicaFastMove.LOGGER.debug("Failed to build overlay at {}", pos.toShortString(), e);
-                                    }
+                            if (overlay != null) {
+                                try {
+                                    overlay.addOverlay(pos, state, clientState, missing);
+                                } catch (Throwable e) {
+                                    LitematicaFastMove.LOGGER.debug("Failed to build overlay at {}", pos.toShortString(), e);
                                 }
                             }
                         }
                     }
                 }
-
-                List<PlacementMesh.CpuLayer> layers = new ArrayList<>();
-                float cameraX = (float) (camera.x - sectionOrigin.getX() - clientDelta.getX());
-                float cameraY = (float) (camera.y - sectionOrigin.getY() - clientDelta.getY());
-                float cameraZ = (float) (camera.z - sectionOrigin.getZ() - clientDelta.getZ());
-
-                for (Map.Entry<RenderType, BufferBuilder> entry : builders.entrySet()) {
-                    BufferBuilder builder = entry.getValue();
-                    boolean isTranslucent = entry.getKey() == RenderType.translucent();
-                    BufferBuilder.SortState sortState = null;
-                    if (isTranslucent) {
-                        builder.setQuadSorting(VertexSorting.byDistance(cameraX, cameraY, cameraZ));
-                        sortState = builder.getSortState();
-                    }
-                    BufferBuilder.RenderedBuffer rendered = builder.end();
-                    if (rendered.isEmpty()) {
-                        rendered.release();
-                        continue;
-                    }
-                    ByteBuffer vertices = rendered.vertexBuffer();
-                    int vertexBytes = vertices == null ? 0 : vertices.remaining();
-                    layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, rendered,
-                            rendered.drawState().indexCount(), sortState, vertexBytes, hash(vertices)));
-                }
-                for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
-                    BufferBuilder.RenderedBuffer rendered = entry.getValue().end();
-                    if (rendered.isEmpty()) {
-                        rendered.release();
-                        continue;
-                    }
-                    ByteBuffer vertices = rendered.vertexBuffer();
-                    int vertexBytes = vertices == null ? 0 : vertices.remaining();
-                    layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), rendered,
-                            rendered.drawState().indexCount(), null, vertexBytes, hash(vertices)));
-                }
-
-                // Section is only kept when there is something in it, or when a partial build must clear it
-                if (hasBlocks || !layers.isEmpty() || emitEmpty) {
-                    sections.add(new PlacementMesh.CpuSection(key, sectionOrigin, hasBlocks, clientEmpty, clip, layers, blockEntities.toLongArray()));
-                } else {
-                    layers.forEach(PlacementMesh.CpuLayer::free);
-                }
             }
-        } finally {
-            // nothing to close: every builder's data is owned by the RenderedBuffer we kept or released
+
+            List<PlacementMesh.CpuLayer> layers = new ArrayList<>();
+            float cameraX = (float) (camera.x - sectionOrigin.getX() - clientDelta.getX());
+            float cameraY = (float) (camera.y - sectionOrigin.getY() - clientDelta.getY());
+            float cameraZ = (float) (camera.z - sectionOrigin.getZ() - clientDelta.getZ());
+
+            for (Map.Entry<RenderType, BufferBuilder> entry : builders.entrySet()) {
+                BufferBuilder builder = entry.getValue();
+                boolean isTranslucent = entry.getKey() == RenderType.translucent();
+                BufferBuilder.SortState sortState = null;
+                if (isTranslucent) {
+                    builder.setQuadSorting(VertexSorting.byDistance(cameraX, cameraY, cameraZ));
+                    sortState = builder.getSortState();
+                }
+                BufferBuilder.RenderedBuffer rendered = builder.end();
+                if (rendered.isEmpty()) {
+                    rendered.release();
+                    PlacementMesh.freeNative(builder);
+                    continue;
+                }
+                ByteBuffer vertices = rendered.vertexBuffer();
+                int vertexBytes = vertices == null ? 0 : vertices.remaining();
+                layers.add(new PlacementMesh.CpuLayer(entry.getKey(), null, rendered, builder,
+                        rendered.drawState().indexCount(), sortState, vertexBytes, hash(vertices)));
+            }
+            for (Map.Entry<OverlayRenderType, BufferBuilder> entry : overlayBuilders.entrySet()) {
+                BufferBuilder.RenderedBuffer rendered = entry.getValue().end();
+                if (rendered.isEmpty()) {
+                    rendered.release();
+                    PlacementMesh.freeNative(entry.getValue());
+                    continue;
+                }
+                ByteBuffer vertices = rendered.vertexBuffer();
+                int vertexBytes = vertices == null ? 0 : vertices.remaining();
+                layers.add(new PlacementMesh.CpuLayer(null, entry.getKey(), rendered, entry.getValue(),
+                        rendered.drawState().indexCount(), null, vertexBytes, hash(vertices)));
+            }
+
+            // Section is only kept when there is something in it, or when a partial build must clear it
+            if (hasBlocks || !layers.isEmpty() || emitEmpty) {
+                sections.add(new PlacementMesh.CpuSection(key, sectionOrigin, hasBlocks, clientEmpty, clip, layers, blockEntities.toLongArray()));
+            } else {
+                layers.forEach(PlacementMesh.CpuLayer::free);
+            }
         }
 
         return sections;
