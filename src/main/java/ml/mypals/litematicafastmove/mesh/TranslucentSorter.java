@@ -43,6 +43,7 @@ public class TranslucentSorter {
             } finally {
                 VertexBuffer.unbind();
             }
+            PlacementMesh.freeNative(builder);
             sort.lastX = rx;
             sort.lastY = ry;
             sort.lastZ = rz;
